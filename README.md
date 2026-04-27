@@ -1,2 +1,2 @@
-# gubgub4
-who is doing what on GitHub
+# gubgub
+Who is doing what, when and where on GitHub!
