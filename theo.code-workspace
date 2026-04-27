@@ -1,0 +1,48 @@
+{
+  "folders": [
+    {
+      "name": "heritage-happenings.github.io",
+      "path": "heritage-happenings.github.io"
+    },
+    {
+      "name": "pushme-pullyou-github",
+      "path": "pushme-pullyou-github"
+    },
+    {
+      "name": "pushme-pullyou-tootoo",
+      "path": "pushme-pullyou-tootoo"
+    },
+    {
+      "name": "theo-armour-2025",
+      "path": "theo-armour-2025"
+    },
+    {
+      "name": "theo-armour-agenda",
+      "path": "theo-armour-agenda"
+    },
+    {
+      "name": "theo-armour-genealogy",
+      "path": "theo-armour-genealogy"
+    },
+    {
+      "name": "theo-armour-pages",
+      "path": "theo-armour-pages"
+    },
+    {
+      "name": "theo-armour-qdata",
+      "path": "theo-armour-qdata"
+    },
+    {
+      "name": "theo-armour-sandbox",
+      "path": "theo-armour-sandbox"
+    },
+    {
+      "name": "theo-armour-aa",
+      "path": "theo-armour-aa"
+    }
+  ],
+  "settings": {
+    "markdown-pdf.footerTemplate": "<div style=\"font-size: 9px; margin: 0 auto;\"> <span class='pageNumber'></span> / <span class='totalPages'></span></div>",
+    "folder-color.pathColors": []
+  }
+}

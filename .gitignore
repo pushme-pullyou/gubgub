@@ -1,0 +1,11 @@
+# OS / Drive noise
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
