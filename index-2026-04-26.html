@@ -293,11 +293,15 @@
 <body>
 
   <header>
-    <strong style="cursor: pointer;" data-action="reload-app" title="Reload GubGub">GubGub</strong>
+    <strong style="cursor: pointer;"
+      onclick="history.replaceState(null, '', location.pathname + location.search); location.reload();"
+      title="Reload GubGub">GubGub</strong>
     <input type="text" id="ownerInput" placeholder="Enter user or org name" autocomplete="off"
-      oninput="resetMainAction()" onchange="handleFetchRepos()" list="recentUsers" />
+      oninput="resetMainAction()" onfocus="this.value=''" onchange="handleFetchRepos()" list="recentUsers" />
     <datalist id="recentUsers"></datalist>
-    <button data-action="open-owner-profile" title="Open user's GitHub profile"
+    <button
+      onclick="window.open('https://github.com/' + document.getElementById('ownerInput').value.trim(), '_blank', 'noopener')"
+      title="Open user's GitHub profile"
       style="background: transparent; color: var(--text-color); border: 1px solid var(--border-color); padding: 0.4rem; display: flex; align-items: center; justify-content: center;">
       <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor">
         <path
@@ -305,14 +309,14 @@
         </path>
       </svg>
     </button>
-    <button id="btnMainAction" data-action="fetch-repos">Get Repos</button>
-    <button id="btnGetOrgs" data-action="fetch-orgs">Get Orgs</button>
-    <button id="btnGetGists" data-action="fetch-gists">Get Gists</button>
-    <button id="btnStats" data-action="fetch-stats">Stats</button>
-    <button id="btnDiscover" data-action="discover" style="background: var(--text-color); color: var(--primary-bg);">🌍
-      Discover</button>
-    <button id="btnToggleFolders" data-action="toggle-folders" style="display: none;">Expand All</button>
-    <button data-action="prompt-token"
+    <button id="btnMainAction" onclick="handleFetchRepos()">Get Repos</button>
+    <button id="btnGetOrgs" onclick="handleFetchOrgs()">Get Orgs</button>
+    <button id="btnGetGists" onclick="handleFetchGists()">Get Gists</button>
+    <button id="btnStats" onclick="handleFetchStats()">Stats</button>
+    <button id="btnDiscover" onclick="handleDiscover()"
+      style="background: var(--text-color); color: var(--primary-bg);">🌍 Discover</button>
+    <button id="btnToggleFolders" onclick="toggleAllFolders()" style="display: none;">Expand All</button>
+    <button onclick="promptForToken()"
       style="margin-left: auto; background: var(--secondary-bg); color: var(--text-color); border: 1px solid var(--border-color);">⚙️
       Token</button>
   </header>
@@ -384,7 +388,6 @@
     const headers = ghToken ? { Authorization: `token ${ ghToken }` } : {};
     const LARGE_FILE_WARNING_BYTES = 1024 * 1024;
     const approvedLargeFiles = new Set();
-    let currentBlobUrl = null;
 
     const languageColors = {
       JavaScript: '#f1e05a', TypeScript: '#3178c6', Python: '#3572A5', Java: '#b07219',
@@ -407,7 +410,6 @@
 
     // ── DOM references ──────────────────────────────────────────────────────
 
-    const appHeader = document.querySelector( 'header' );
     const ownerInput = document.getElementById( 'ownerInput' );
     const repoList = document.getElementById( 'repoList' );
     const repoListContainer = document.getElementById( 'repoListContainer' );
@@ -516,7 +518,7 @@
 
     const resetMainAction = () => {
       btnMainAction.textContent = 'Get Repos';
-      btnMainAction.dataset.action = 'fetch-repos';
+      btnMainAction.onclick = handleFetchRepos;
       document.getElementById( 'btnGetOrgs' ).style.display = 'inline-block';
       document.getElementById( 'btnGetGists' ).style.display = 'inline-block';
     };
@@ -726,7 +728,7 @@
           html += `
             <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
               <img src="${ escapeAttribute( data.owner.avatar_url ) }" style="width: 48px; height: 48px; border-radius: 50%;">
-              <h2 style="margin: 0;">Repository: <a href="${ escapeAttribute( data.html_url ) }" target="_blank" rel="noopener" style="color: var(--highlight-color); text-decoration: none;">${ escapeHTML( data.full_name ) }</a></h2>
+              <h2 style="margin: 0;">Repository: <a href="${ escapeAttribute( data.html_url ) }" target="_blank" style="color: var(--highlight-color); text-decoration: none;">${ escapeHTML( data.full_name ) }</a></h2>
             </div>
             ${ data.description ? `<p style="font-size: 1.1rem; color: #57606a; margin-bottom: 1.5rem;">${ escapeHTML( data.description ) }</p>` : '' }
             <ul style="list-style: none; padding: 0; line-height: 2; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem;">
@@ -739,7 +741,7 @@
               <li>🕒 <strong>Created:</strong> ${ new Date( data.created_at ).toLocaleDateString() }</li>
               <li>🔄 <strong>Updated:</strong> ${ new Date( data.updated_at ).toLocaleDateString() }</li>
               <li>📦 <strong>Size:</strong> ${ ( data.size / 1024 ).toFixed( 2 ) } MB</li>
-              ${ data.homepage ? `<li>🌐 <strong>Website:</strong> <a href="${ data.homepage.startsWith( 'http' ) ? escapeAttribute( data.homepage ) : 'http://' + escapeAttribute( data.homepage ) }" target="_blank" rel="noopener" style="color: var(--highlight-color); text-decoration: none;">${ escapeHTML( data.homepage ) }</a></li>` : '' }
+              ${ data.homepage ? `<li>🌐 <strong>Website:</strong> <a href="${ data.homepage.startsWith( 'http' ) ? escapeAttribute( data.homepage ) : 'http://' + escapeAttribute( data.homepage ) }" target="_blank" style="color: var(--highlight-color); text-decoration: none;">${ escapeHTML( data.homepage ) }</a></li>` : '' }
               <li>📄 <strong>Pages:</strong> ${ data.has_pages ? 'Enabled' : 'Disabled' }</li>
             </ul>`;
 
@@ -803,7 +805,7 @@
                 const name = f.path.split( '/' ).pop();
                 return `<tr style="border-bottom: 1px solid var(--border-color);">
                         <td style="padding: 0.3rem 0.5rem;">
-                          <span style="color: var(--highlight-color); cursor: pointer;" data-action="select-file" data-path="${ escapeAttribute( f.path ) }">${ escapeHTML( name ) }</span>
+                          <span style="color: var(--highlight-color); cursor: pointer;" onclick="handleSelectFile('${ escapeAttribute( f.path ) }')">${ escapeHTML( name ) }</span>
                           <span style="font-size: 0.8rem; color: #57606a; margin-left: 0.5rem;">${ escapeHTML( f.path.includes( '/' ) ? f.path.substring( 0, f.path.lastIndexOf( '/' ) ) : '' ) }</span>
                         </td>
                         <td style="padding: 0.3rem 0.5rem; text-align: right; white-space: nowrap;">${ formatFileSize( f.size ) }</td>
@@ -877,7 +879,7 @@
               <img src="${ escapeAttribute( data.avatar_url ) }" style="width: 80px; height: 80px; border-radius: 50%; box-shadow: 0 0 0 1px var(--border-color);">
               <div>
                 <h2 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
-                  <a href="${ escapeAttribute( data.html_url ) }" target="_blank" rel="noopener" style="color: var(--highlight-color); text-decoration: none;">${ escapeHTML( data.name || data.login ) }</a>
+                  <a href="${ escapeAttribute( data.html_url ) }" target="_blank" style="color: var(--highlight-color); text-decoration: none;">${ escapeHTML( data.name || data.login ) }</a>
                   <small style="color: #57606a; font-weight: normal;">(@${ escapeHTML( data.login ) })</small>
                 </h2>
                 ${ data.type === 'Organization' ? '<span style="background: #eef2f5; border: 1px solid #d0d7de; font-size: 0.8rem; padding: 0.1rem 0.4rem; border-radius: 12px; margin-top: 0.25rem; display: inline-block;">Organization</span>' : '' }
@@ -947,7 +949,7 @@
             html += `
               <h3 style="margin: 1.5rem 0 0.5rem 0; font-size: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem;">Organizations</h3>
               <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                ${ orgs.map( o => `<button data-action="select-owner" data-owner="${ escapeAttribute( o.login ) }"
+                ${ orgs.map( o => `<button onclick="ownerInput.value='${ escapeAttribute( o.login ) }'; handleFetchRepos()"
                   style="background: var(--hover-bg); color: var(--highlight-color); border: 1px solid var(--border-color); padding: 0.3rem 0.75rem; font-size: 0.9rem;">
                   ${ escapeHTML( o.login ) }</button>` ).join( '' ) }
               </div>`;
@@ -984,7 +986,7 @@
                 <tbody>
                   ${ recentRepos.map( r => `<tr style="border-bottom: 1px solid var(--border-color);">
                     <td style="padding: 0.3rem 0.5rem;">
-                      <span style="color: var(--highlight-color); cursor: pointer;" data-action="select-repo" data-owner="${ escapeAttribute( owner ) }" data-repo="${ escapeAttribute( r.name ) }">${ escapeHTML( r.name ) }</span>
+                      <span style="color: var(--highlight-color); cursor: pointer;" onclick="ownerInput.value='${ escapeAttribute( owner ) }'; handleSelectRepo('${ escapeAttribute( r.name ) }')">${ escapeHTML( r.name ) }</span>
                       ${ r.stargazers_count ? ` <span style="font-size: 0.8rem; color: #57606a;">⭐${ r.stargazers_count }</span>` : '' }
                     </td>
                     <td style="padding: 0.3rem 0.5rem; text-align: right; color: #57606a;">${ relTime( r.pushed_at ) }</td>
@@ -1053,7 +1055,7 @@
         navTree.querySelector( 'h3' ).innerHTML = `Files ${ branchesHtml }`;
 
         btnMainAction.textContent = '← Back to Repos';
-        btnMainAction.dataset.action = 'back-to-repos';
+        btnMainAction.onclick = handleBackToRepos;
         document.getElementById( 'btnGetOrgs' ).style.display = 'none';
         document.getElementById( 'btnGetGists' ).style.display = 'none';
 
@@ -1107,7 +1109,7 @@
         navTree.style.display = 'block';
 
         btnMainAction.textContent = '← Back to Gists';
-        btnMainAction.dataset.action = 'back-to-repos';
+        btnMainAction.onclick = handleBackToRepos;
         document.getElementById( 'btnGetOrgs' ).style.display = 'none';
         document.getElementById( 'btnGetGists' ).style.display = 'none';
 
@@ -1160,9 +1162,7 @@
             renderedHtml = `<div class="md-error">⚠️ Failed to render Markdown. Showing raw text.</div>` + rawHtml;
           }
         } else if ( [ 'html', 'htm' ].includes( ext ) ) {
-          if ( currentBlobUrl ) { URL.revokeObjectURL( currentBlobUrl ); currentBlobUrl = null; }
           const blobUrl = URL.createObjectURL( new Blob( [ text ], { type: 'text/html' } ) );
-          currentBlobUrl = blobUrl;
           renderedHtml = `<iframe src="${ blobUrl }" sandbox="allow-scripts" class="iframe-content"></iframe>`;
           showToggles = true;
         } else {
@@ -1227,7 +1227,7 @@
                data-owner="${ escapeAttribute( state.owner ) }"
                data-repo="${ escapeAttribute( state.repo ) }"
                data-branch="${ escapeAttribute( state.branch ) }"
-               data-action="select-repo" data-auto-open="false">${ escapeHTML( state.repo ) }</a>`;
+               onclick="event.preventDefault(); history.pushState(null, '', '#' + this.dataset.owner + '/' + this.dataset.repo); handleSelectRepo(this.dataset.repo, false, this.dataset.branch)">${ escapeHTML( state.repo ) }</a>`;
         const pathPrefix = pathParts.length ? pathParts.join( ' / ' ) + ' / ' : '';
 
         const headerHtml = `
@@ -1241,10 +1241,10 @@
               </a>
             </h3>
             <div class="file-actions">
-              <button data-action="open-url" data-url="${ escapeAttribute( newTabUrl ) }" class="file-btn" title="Open in new tab">New Tab</button>
+              <button onclick="window.open('${ escapeAttribute( newTabUrl ) }', '_blank', 'noopener')" class="file-btn" title="Open in new tab">New Tab</button>
               <div id="fileViewToggles" class="file-actions" style="display: none;">
-                <button id="btnRendered" data-action="toggle-file-view" data-view="rendered" class="file-btn">Rendered</button>
-                <button id="btnRaw" data-action="toggle-file-view" data-view="raw" class="file-btn" style="opacity: 0.5;">Raw</button>
+                <button id="btnRendered" onclick="toggleFileView('rendered')" class="file-btn">Rendered</button>
+                <button id="btnRaw" onclick="toggleFileView('raw')" class="file-btn" style="opacity: 0.5;">Raw</button>
               </div>
             </div>
           </div>`;
@@ -1273,15 +1273,15 @@
 
             const prefix = `https://github.com/${ state.owner }/${ state.repo }/blob/`;
             if ( href.startsWith( prefix ) ) {
-              a.addEventListener( 'click', e => {
+              a.onclick = e => {
                 e.preventDefault();
                 let p = href.substring( prefix.length );
                 if ( p.startsWith( state.branch + '/' ) ) p = p.substring( state.branch.length + 1 );
                 else { const s = p.indexOf( '/' ); if ( s !== -1 ) p = p.substring( s + 1 ); }
                 handleSelectFile( decodeURIComponent( p ) );
-              } );
+              };
             } else if ( !href.startsWith( 'http://' ) && !href.startsWith( 'https://' ) && !href.startsWith( 'mailto:' ) && !href.startsWith( '#' ) ) {
-              a.addEventListener( 'click', e => {
+              a.onclick = e => {
                 e.preventDefault();
                 const [ relativePath ] = href.split( '#' );
                 const currentDir = path.includes( '/' ) ? path.split( '/' ).slice( 0, -1 ) : [];
@@ -1292,7 +1292,7 @@
                   resolved.push( seg );
                 } );
                 if ( resolved.length ) handleSelectFile( decodeURIComponent( resolved.join( '/' ) ) );
-              } );
+              };
             } else if ( !href.startsWith( '#' ) ) {
               a.target = '_blank';
               a.rel = 'noopener';
@@ -1310,7 +1310,6 @@
     const handleBackToRepos = () => {
       state.repo = '';
       state.currentFilePath = '';
-      state.isGist = false;
       updateHash();
       repoListContainer.style.display = 'block';
       navTree.style.display = 'none';
@@ -1423,7 +1422,11 @@
       document.getElementById( 'btnGetGists' ).style.display = 'none';
 
       btnMainAction.textContent = '← Back to Search';
-      btnMainAction.dataset.action = 'back-to-search';
+      btnMainAction.onclick = () => {
+        resetMainAction();
+        if ( ownerInput.value.trim() ) handleFetchRepos();
+        else { repoListContainer.style.display = 'block'; mainContent.innerHTML = ''; }
+      };
 
       const curated = {
         'Creative Coding & 3D': [ 'mrdoob', 'pmndrs', 'greggman', 'd3', 'playcanvas' ],
@@ -1435,7 +1438,7 @@
         <div style="margin-bottom: 1.5rem;">
           <h4 style="margin: 0 0 0.5rem 0; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem;">${ escapeHTML( category ) }</h4>
           <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            ${ users.map( u => `<button data-action="select-owner" data-owner="${ escapeAttribute( u ) }"
+            ${ users.map( u => `<button onclick="ownerInput.value='${ escapeAttribute( u ) }'; handleFetchRepos()"
               style="background: var(--hover-bg); color: var(--highlight-color); border: 1px solid var(--border-color);">${ escapeHTML( u ) }</button>` ).join( '' ) }
           </div>
         </div>` ).join( '' );
@@ -1447,7 +1450,7 @@
 
           <div style="margin-top: 2rem;">
             <h3 style="margin-bottom: 1rem;">🎲 Roll the Dice</h3>
-            <button data-action="random-user" style="font-size: 1.1rem; padding: 0.75rem 1.5rem; background: var(--text-color);">Surprise Me (Random User)</button>
+            <button onclick="handleRandomUser()" style="font-size: 1.1rem; padding: 0.75rem 1.5rem; background: var(--text-color);">Surprise Me (Random User)</button>
             <p style="font-size: 0.9rem; color: #57606a; margin-top: 0.5rem;">Fetches a completely random account ID from GitHub's database of users.</p>
           </div>
 
@@ -1458,7 +1461,7 @@
 
           <div style="margin-top: 2rem;">
             <h3 style="margin-bottom: 1rem;">🔥 API Search</h3>
-            <button data-action="search-top-users" style="background: var(--hover-bg); color: var(--text-color); border: 1px solid var(--border-color);">Fetch Top Followed Global Users</button>
+            <button onclick="handleSearchTopUsers()" style="background: var(--hover-bg); color: var(--text-color); border: 1px solid var(--border-color);">Fetch Top Followed Global Users</button>
           </div>
         </div>`;
     };
@@ -1495,7 +1498,7 @@
         const cardsHtml = data.items.map( user => `
           <div style="background: var(--secondary-bg); border: 1px solid var(--border-color); padding: 1rem; border-radius: 6px; text-align: center; cursor: pointer; transition: background 0.2s;"
                data-login="${ escapeAttribute( user.login ) }"
-               data-action="select-login"
+               onclick="ownerInput.value=this.dataset.login; handleFetchRepos();"
                onmouseover="this.style.background='var(--hover-bg)'"
                onmouseout="this.style.background='var(--secondary-bg)'">
             <img src="${ escapeAttribute( user.avatar_url ) }" style="width: 64px; height: 64px; border-radius: 50%; margin-bottom: 0.5rem; border: 1px solid var(--border-color);">
@@ -1514,30 +1517,6 @@
 
     // ── Event delegation ──────────────────────────────────────────────────────
 
-    appHeader.addEventListener( 'click', e => {
-      const el = e.target.closest( '[data-action]' );
-      if ( !el ) return;
-      const { action } = el.dataset;
-      if ( action === 'reload-app' ) {
-        history.replaceState( null, '', location.pathname + location.search );
-        location.reload();
-      } else if ( action === 'open-owner-profile' ) {
-        window.open( `https://github.com/${ ownerInput.value.trim() }`, '_blank', 'noopener' );
-      } else if ( action === 'fetch-repos' ) handleFetchRepos();
-      else if ( action === 'fetch-orgs' ) handleFetchOrgs();
-      else if ( action === 'fetch-gists' ) handleFetchGists();
-      else if ( action === 'fetch-stats' ) handleFetchStats();
-      else if ( action === 'discover' ) handleDiscover();
-      else if ( action === 'toggle-folders' ) toggleAllFolders();
-      else if ( action === 'prompt-token' ) promptForToken();
-      else if ( action === 'back-to-repos' ) handleBackToRepos();
-      else if ( action === 'back-to-search' ) {
-        resetMainAction();
-        if ( ownerInput.value.trim() ) handleFetchRepos();
-        else { repoListContainer.style.display = 'block'; mainContent.innerHTML = ''; }
-      }
-    } );
-
     repoList.addEventListener( 'click', e => {
       const el = e.target.closest( '[data-action]' );
       if ( !el ) return;
@@ -1553,30 +1532,6 @@
     treeList.addEventListener( 'click', e => {
       const el = e.target.closest( '[data-action="select-file"]' );
       if ( el ) handleSelectFile( el.dataset.path );
-    } );
-
-    mainContent.addEventListener( 'click', e => {
-      const el = e.target.closest( '[data-action]' );
-      if ( !el ) return;
-      const { action } = el.dataset;
-      if ( action === 'select-file' ) handleSelectFile( el.dataset.path );
-      else if ( action === 'select-owner' ) { ownerInput.value = el.dataset.owner; handleFetchRepos(); }
-      else if ( action === 'select-login' ) { ownerInput.value = el.dataset.login; handleFetchRepos(); }
-      else if ( action === 'select-repo' ) {
-        if ( el.dataset.owner ) ownerInput.value = el.dataset.owner;
-        const autoOpen = el.dataset.autoOpen !== 'false';
-        handleSelectRepo( el.dataset.repo, autoOpen, el.dataset.branch || null );
-      } else if ( action === 'open-url' ) {
-        window.open( el.dataset.url, '_blank', 'noopener' );
-      } else if ( action === 'toggle-file-view' ) {
-        toggleFileView( el.dataset.view );
-      } else if ( action === 'random-user' ) {
-        handleRandomUser();
-      } else if ( action === 'search-top-users' ) {
-        handleSearchTopUsers();
-      } else if ( action === 'reload-page' ) {
-        location.reload();
-      }
     } );
 
     // ── Keyboard navigation in tree ────────────────────────────────────────────
@@ -1669,7 +1624,7 @@
       <div style="padding: 1.5rem; background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; border-radius: 6px; margin: 1rem;">
         <h3 style="margin-top: 0;">⚠️ ${ title }</h3>
         <p>${ escapeHTML( msg ) }</p>
-        <button data-action="reload-page" style="margin-top: 1rem; background: #c62828; color: white;">Reload Page</button>
+        <button onclick="location.reload()" style="margin-top: 1rem; background: #c62828; color: white;">Reload Page</button>
       </div>`;
 
     window.addEventListener( 'error', event => {

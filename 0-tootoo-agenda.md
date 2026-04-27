@@ -2,6 +2,8 @@
 
 ## Agenda
 
+* 2026-04-26 GitHub logo to left
+* 2026-04-26 ~ root folder readme
 * Allow private repos to open with gat
 * tooltips show keys
 * expand all same color
