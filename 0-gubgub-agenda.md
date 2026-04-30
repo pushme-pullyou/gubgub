@@ -2,23 +2,14 @@
 
 ## Agenda
 
-* 2026-04-26 GitHub logo to left
-* 2026-04-26 ~ root folder readme
-* Allow private repos to open with gat
+* 2026-04-29 GubGub and TooToo both use the same palette.
+* 2026-04-29 Both use a palette that can be easily tampered with, played with by the user.
+* 2026-04-29 Always display last update date somewhere
+* 2026-04-29 Files header is sticking.
+* 2026-04-29 Much better file searching
+* 2026-04-29 Add a tips page
+* 2026-04-29 Add file icons
 * tooltips show keys
-* expand all same color
-* don't use .archive files for checking
 
 
 
-## Journal
-
-* 2026-04-10
-* 2026-04-09 ~ auto-configure repo, org, and gists based on URL ??
-* 2026-04-09 ~ Check out GitHub's MCP Server.
-* 2026-04-05 ~ DabDab: EditHub
-* Links to all your followers or stars givers
-* Link to GitHub explore
-* GubGub AtLarge for multiple users and/or multiple websites ~ ViewHub
-* 2026-04-09 ~ copy TooToo over to here name?
-* 2026-04-09 ~ Build at least the skeleton of the README.

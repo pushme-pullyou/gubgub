@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TooToo GitHub Browser</title>
+  <title>GubGub GitHub Browser</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -297,9 +297,6 @@
 <body>
 
   <header>
-    <strong style="cursor: pointer;" data-action="reload-app" title="Reload GubGub">GubGub</strong>
-    <input type="text" id="ownerInput" placeholder="Enter user or org name" autocomplete="off" list="recentUsers" />
-    <datalist id="recentUsers"></datalist>
     <button data-action="open-owner-profile" title="Open user's GitHub profile"
       style="background: transparent; color: var(--text-color); border: 1px solid var(--border-color); padding: 0.4rem; display: flex; align-items: center; justify-content: center;">
       <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor">
@@ -308,16 +305,20 @@
         </path>
       </svg>
     </button>
+    <strong style="cursor: pointer;" data-action="reload-app" title="Reload GubGub">GubGub</strong>
+    <input type="text" id="ownerInput" placeholder="Enter user or org name" autocomplete="off" list="recentUsers" />
+    <datalist id="recentUsers"></datalist>
     <button id="btnMainAction" data-action="fetch-repos">Get Repos</button>
     <button id="btnGetOrgs" data-action="fetch-orgs">Get Orgs</button>
     <button id="btnGetGists" data-action="fetch-gists">Get Gists</button>
     <button id="btnStats" data-action="fetch-stats">Stats</button>
     <button id="btnDiscover" data-action="discover" style="background: var(--text-color); color: var(--primary-bg);">🌍
       Discover</button>
-    <button id="btnToggleFolders" data-action="toggle-folders" style="display: none;">Expand All</button>
     <button data-action="prompt-token"
       style="margin-left: auto; background: var(--secondary-bg); color: var(--text-color); border: 1px solid var(--border-color);">⚙️
       Token</button>
+    <span id="rateLimitDisplay" title="GitHub API rate limit: remaining / total"
+      style="font-size: 0.8rem; color: #57606a; white-space: nowrap;"></span>
   </header>
 
   <main>
@@ -337,7 +338,13 @@
         <ul id="repoList"></ul>
       </div>
       <div id="navTree">
-        <h3 style="margin: 0 0 0.35rem 0; font-size: 0.95rem;">Files</h3>
+        <h3
+          style="margin: 0 0 0.35rem 0; font-size: 0.95rem; display: flex; justify-content: space-between; align-items: center;">
+          <span>Files <span id="branchSelector"></span></span>
+          <button id="btnToggleFolders" data-action="toggle-folders"
+            style="display: none; font-size: 0.75rem; padding: 0.15rem 0.5rem; background: var(--secondary-bg); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer;">Expand
+            All</button>
+        </h3>
         <div id="treeTruncatedWarning"
           style="display:none; padding: 0.5rem; background: #fff3cd; color: #856404; border: 1px solid #ffeeba; font-size: 0.85rem; border-radius: 4px; margin-top: 0.5rem;">
           ⚠️ Repository too large. Tree truncated.</div>
@@ -380,11 +387,15 @@
       isGist: false,
       currentFilePath: '',
       repoItems: [],
-      repoRenderer: null
+      repoRenderer: null,
+      repoLoadMoreHtml: ''
     };
 
     const ghToken = localStorage.getItem( 'githubToken' ) || '';
     const headers = ghToken ? { Authorization: `token ${ ghToken }` } : {};
+    // Login of the user that the token belongs to (lower-cased). Populated in init when a token is present.
+    // Used to decide whether to call /user/repos (which can return private repos) instead of /users/:user/repos.
+    let authedLogin = '';
     const LARGE_FILE_WARNING_BYTES = 1024 * 1024;
     const approvedLargeFiles = new Set();
     let currentBlobUrl = null;
@@ -440,8 +451,6 @@
 
     const getLargeFileApprovalKey = path => `${ state.owner }/${ state.repo }/${ state.branch }/${ path }`;
 
-    const encodePath = path => path.split( '/' ).map( encodeURIComponent ).join( '/' );
-
     const getHashPath = path => path.split( '/' ).map( encodeURIComponent ).join( '/' );
 
     const getGistFileAnchor = path => path
@@ -475,10 +484,10 @@
     // ── Recent users ────────────────────────────────────────────────────────
 
     const updateRecentUsers = newUser => {
-      let users = JSON.parse( localStorage.getItem( 'tootooRecentUsers' ) || '[]' );
+      let users = JSON.parse( localStorage.getItem( 'gubgubRecentUsers' ) || '[]' );
       if ( newUser ) {
         users = [ newUser, ...users.filter( u => u !== newUser ) ].slice( 0, 10 );
-        localStorage.setItem( 'tootooRecentUsers', JSON.stringify( users ) );
+        localStorage.setItem( 'gubgubRecentUsers', JSON.stringify( users ) );
       }
       recentUsersDataList.innerHTML = users.map( u =>
         `<option value="${ escapeAttribute( u ) }">${ escapeAttribute( u ) }</option>`
@@ -487,12 +496,80 @@
 
     // ── Token ───────────────────────────────────────────────────────────────
 
-    const promptForToken = () => {
-      const newToken = prompt( 'Enter GitHub Personal Access Token (for higher rate limits):\nLeave blank to clear.', ghToken );
-      if ( newToken !== null ) {
-        localStorage.setItem( 'githubToken', newToken.trim() );
+    const getStoredToken = () => localStorage.getItem( 'githubToken' ) || '';
+
+    const RATE_LIMIT_REASON_HTML = `
+      <div style="background:#fff0f0;border:2px solid #dc3545;color:#24292f;padding:1rem;border-radius:6px;margin-bottom:1rem;font-size:0.9rem;">
+        ⚠️ <strong>GitHub API rate limit reached.</strong> You've exceeded the anonymous request quota.
+        Add a token below or wait for the limit to reset.
+      </div>`;
+
+    const showTokenPanel = ( reasonHtml = '' ) => {
+      const current = getStoredToken();
+      const hasToken = current.length > 0;
+      mainContent.innerHTML = `
+        ${ reasonHtml }
+        <div style="max-width:560px;padding:1.5rem;display:flex;flex-direction:column;gap:0.75rem;font-size:0.95rem;line-height:1.5;">
+          <h3 style="margin:0;">⚙️ GitHub Token</h3>
+          <p>GubGub reads the GitHub REST API to list and fetch repository contents. GitHub limits anonymous access to
+          <strong>60 requests per hour per IP address</strong>. With a Personal Access Token (PAT) the limit rises to
+          <strong>5,000 requests per hour</strong>, and you can also access private repositories.</p>
+          <p><strong>How to get a token:</strong></p>
+          <ul style="margin:0;padding-left:1.25rem;">
+            <li><strong>Public repos:</strong> create a classic token with no scopes at
+              <a href="https://github.com/settings/tokens" target="_blank" rel="noopener"
+                style="color:var(--highlight-color);">github.com/settings/tokens</a>.</li>
+            <li><strong>Private repos:</strong> use a fine-grained token with <em>Contents: Read</em> permission.</li>
+          </ul>
+          <p>Your token is stored only in this browser's <code>localStorage</code> and is never sent anywhere except <code>api.github.com</code>.</p>
+          <label for="inpToken" style="font-weight:bold;">Token${ hasToken ? ' (currently set)' : '' }</label>
+          <input id="inpToken" type="password"
+            placeholder="${ hasToken ? '•••••••• (leave blank to keep current)' : 'ghp_…' }"
+            autocomplete="off" spellcheck="false"
+            style="padding:0.4rem 0.5rem;font-size:1rem;border:1px solid var(--border-color);border-radius:4px;background:var(--secondary-bg);color:var(--text-color);">
+          <label style="font-weight:normal;cursor:pointer;">
+            <input id="inpTokenShow" type="checkbox"> Show token
+          </label>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+            <button id="btnTokenSave"
+              style="padding:0.4rem 1rem;background:var(--highlight-color);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:1rem;">Save</button>
+            <button id="btnTokenClear"
+              style="padding:0.4rem 1rem;background:var(--secondary-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:4px;cursor:pointer;font-size:1rem;">Clear</button>
+          </div>
+          <hr style="margin:1rem 0;border:none;border-top:1px solid var(--border-color);">
+          <p style="font-size:0.85rem;opacity:0.8;">Wipe the token and all GubGub preferences (recent users list) from this browser. Useful when testing.</p>
+          <button id="btnResetAll"
+            style="padding:0.4rem 1rem;background:var(--secondary-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:4px;cursor:pointer;font-size:1rem;">Reset all GubGub data</button>
+        </div>`;
+
+      const inp = document.getElementById( 'inpToken' );
+      inp.focus();
+
+      document.getElementById( 'inpTokenShow' ).addEventListener( 'change', e => {
+        inp.type = e.target.checked ? 'text' : 'password';
+      } );
+
+      const save = () => {
+        const value = inp.value.trim();
+        if ( value === '' && hasToken ) return; // blank = keep existing
+        localStorage.setItem( 'githubToken', value );
         location.reload();
-      }
+      };
+
+      document.getElementById( 'btnTokenSave' ).addEventListener( 'click', save );
+      inp.addEventListener( 'keydown', e => { if ( e.key === 'Enter' ) save(); } );
+
+      document.getElementById( 'btnTokenClear' ).addEventListener( 'click', () => {
+        localStorage.removeItem( 'githubToken' );
+        location.reload();
+      } );
+
+      document.getElementById( 'btnResetAll' ).addEventListener( 'click', () => {
+        if ( !window.confirm( 'Wipe the GubGub token and all preferences from this browser?' ) ) return;
+        localStorage.removeItem( 'githubToken' );
+        localStorage.removeItem( 'gubgubRecentUsers' );
+        location.reload();
+      } );
     };
 
     // ── Hash routing ────────────────────────────────────────────────────────
@@ -543,6 +620,12 @@
       if ( owner && owner !== state.owner ) {
         ownerInput.value = owner;
         await handleFetchRepos( false );
+      } else if ( owner && state.repoItems.length === 0 ) {
+        // Repos not yet loaded (e.g. browser reload with full hash) — populate sidebar
+        if ( owner !== ownerInput.value ) ownerInput.value = owner;
+        await handleFetchRepos( false );
+      } else if ( owner && !repo ) {
+        await handleFetchRepos( false );
       }
       if ( repo && ( state.repo !== repo || ( branch && state.branch !== branch ) ) ) await handleSelectRepo( repo, !fp, branch );
       if ( fp && state.currentFilePath !== fp ) await handleSelectFile( fp, false );
@@ -588,6 +671,10 @@
         if ( !response.ok ) throw new Error( `Status: ${ response.status } - ${ response.statusText }` );
 
         const items = await response.json();
+        // GitHub returns a Link header with rel="next" whenever more pages exist.
+        // This is more reliable than items.length === 100 (which misses cases where filters reduce a page).
+        const linkHeader = response.headers.get( 'Link' ) || '';
+        const hasNextPage = /rel="next"/.test( linkHeader );
 
         const oldBtn = document.getElementById( config.btnId );
         if ( oldBtn ) oldBtn.remove();
@@ -598,6 +685,7 @@
           if ( config.page > 1 ) state.repoItems.push( ...items );
           else state.repoItems = [ ...items ];
           state.repoRenderer = config.itemRenderer;
+          state.repoLoadMoreHtml = '';
           sortSelect.style.display = 'block';
         } else {
           sortSelect.style.display = 'none';
@@ -607,6 +695,7 @@
         else repoList.innerHTML = html;
 
         updateRecentUsers( owner );
+        fetchRateLimit();
         const count = repoList.querySelectorAll( '.repo-item' ).length;
         let successHtml = `<p>Loaded ${ count } ${ config.label.toLowerCase() } for ${ owner } (up to page ${ config.page }). Select one to view contents.</p>`;
 
@@ -617,14 +706,17 @@
 
         mainContent.innerHTML = successHtml;
 
-        if ( items.length === 100 ) {
-          repoList.insertAdjacentHTML( 'beforeend',
-            `<li id="${ config.btnId }" style="text-align: center; margin-top: 1rem;">` +
-            `<button type="button" data-action="${ config.onLoadMoreAction }" data-page="${ config.page + 1 }">${ config.loadMoreText }</button></li>` );
+        if ( hasNextPage ) {
+          const loadMoreLi = `<li id="${ config.btnId }" style="text-align: center; margin-top: 1rem; display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap;">` +
+            `<button type="button" data-action="${ config.onLoadMoreAction }" data-page="${ config.page + 1 }">${ config.loadMoreText }</button>` +
+            `<button type="button" data-action="load-all" data-kind="${ config.loadAllKind }" title="Fetch every remaining page (may use many API requests)">Load all</button>` +
+            `</li>`;
+          repoList.insertAdjacentHTML( 'beforeend', loadMoreLi );
+          if ( config.storeItems ) state.repoLoadMoreHtml = loadMoreLi;
         }
       } catch ( error ) {
         if ( error.name === 'AbortError' ) return;
-        if ( error.message.includes( '403' ) ) error.message += ' (Rate limit exceeded. Click "⚙️ Token" to increase limit.)';
+        if ( error.message.includes( '403' ) ) { showTokenPanel( RATE_LIMIT_REASON_HTML ); return; }
         mainContent.innerHTML = `<p class="error">Error fetching ${ config.label.toLowerCase() }: ${ escapeHTML( error.message ) }</p>`;
       }
     };
@@ -632,12 +724,20 @@
     // ── Fetch repos ─────────────────────────────────────────────────────────
 
     const handleFetchRepos = async ( doUpdateHash = true, page = 1 ) => {
+      const owner = ownerInput.value.trim();
+      // When the entered owner is the authenticated user, use /user/repos so private repos are included.
+      // /users/:user/repos only ever returns public repos, even for the token's own user.
+      const isSelf = !!authedLogin && owner.toLowerCase() === authedLogin;
+      const url = isSelf
+        ? `https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner&visibility=all&page=${ page }`
+        : `https://api.github.com/users/${ owner }/repos?per_page=100&sort=updated&page=${ page }`;
       await fetchList( {
         page,
         label: 'Repositories',
         isGist: false,
-        url: `https://api.github.com/users/${ ownerInput.value.trim() }/repos?per_page=100&sort=updated&page=${ page }`,
+        url,
         btnId: 'btnLoadMoreRepos',
+        loadAllKind: 'repos',
         loadMoreText: 'Load More Repos',
         onLoadMoreAction: 'load-more-repos',
         storeItems: true,
@@ -670,6 +770,33 @@
       } );
     };
 
+    // ── Walk all remaining pages of the current list ────────────────────────
+    // Loops the matching load-more handler until GitHub stops returning a full page.
+    // Hard-capped at 50 pages (= 5,000 items) as a safety net against runaway loops.
+    const handleLoadAll = async kind => {
+      const handlers = {
+        repos: page => handleFetchRepos( false, page ),
+        orgs: handleFetchOrgs,
+        gists: handleFetchGists
+      };
+      const handler = handlers[ kind ];
+      if ( !handler ) return;
+      const btnIds = { repos: 'btnLoadMoreRepos', orgs: 'btnLoadMoreOrgs', gists: 'btnLoadMoreGists' };
+      const btnId = btnIds[ kind ];
+      let safety = 50;
+      while ( safety-- > 0 ) {
+        const wrap = document.getElementById( btnId );
+        if ( !wrap ) return;
+        const btn = wrap.querySelector( `[data-action^="load-more-"]` );
+        if ( !btn ) return;
+        const page = Number( btn.dataset.page );
+        if ( !page ) return;
+        wrap.querySelectorAll( 'button' ).forEach( b => { b.disabled = true; } );
+        btn.textContent = `Loading page ${ page }...`;
+        await handler( page );
+      }
+    };
+
     // ── Fetch orgs ──────────────────────────────────────────────────────────
 
     const handleFetchOrgs = async ( page = 1 ) => {
@@ -678,6 +805,7 @@
         label: 'Organizations',
         isGist: false,
         url: `https://api.github.com/users/${ ownerInput.value.trim() }/orgs?per_page=100&page=${ page }`,
+        loadAllKind: 'orgs',
         btnId: 'btnLoadMoreOrgs',
         loadMoreText: 'Load More Orgs',
         onLoadMoreAction: 'load-more-orgs',
@@ -697,6 +825,7 @@
         label: 'Gists',
         isGist: true,
         url: `https://api.github.com/users/${ ownerInput.value.trim() }/gists?per_page=100&page=${ page }`,
+        loadAllKind: 'gists',
         btnId: 'btnLoadMoreGists',
         loadMoreText: 'Load More Gists',
         onLoadMoreAction: 'load-more-gists',
@@ -731,8 +860,19 @@
         const data = await response.json();
 
         let languagesHtml = '';
+        let tagsReleasesHtml = '';
+        let contributorsHtml = '';
+        let commitActivityHtml = '';
         if ( isRepoLevel ) {
-          const langResponse = await fetch( `https://api.github.com/repos/${ owner }/${ state.repo }/languages`, options );
+          const repoBase = `https://api.github.com/repos/${ owner }/${ state.repo }`;
+          const [ langResponse, tagsResp, releasesResp, contribsResp, participationResp ] = await Promise.all( [
+            fetch( `${ repoBase }/languages`, options ),
+            fetch( `${ repoBase }/tags?per_page=20`, options ),
+            fetch( `${ repoBase }/releases?per_page=5`, options ),
+            fetch( `${ repoBase }/contributors?per_page=12`, options ),
+            fetch( `${ repoBase }/stats/participation`, options )
+          ] );
+
           if ( langResponse.ok ) {
             const languages = await langResponse.json();
             const entries = Object.entries( languages );
@@ -757,29 +897,129 @@
               </div>`;
             }
           }
+
+          // ── Tags & Releases ──
+          const tags = tagsResp.ok ? await tagsResp.json() : [];
+          const releases = releasesResp.ok ? await releasesResp.json() : [];
+          if ( tags.length || releases.length ) {
+            const latestRelease = releases[ 0 ];
+            const latestReleaseHtml = latestRelease ? `
+              <div style="margin-bottom: 0.75rem; padding: 0.75rem; background: var(--primary-bg); border: 1px solid var(--border-color); border-radius: 6px;">
+                <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                  <strong>🚀 Latest release:</strong>
+                  <a href="${ escapeAttribute( latestRelease.html_url ) }" target="_blank" rel="noopener" style="color: var(--highlight-color); text-decoration: none; font-weight: bold;">${ escapeHTML( latestRelease.name || latestRelease.tag_name ) }</a>
+                  <span style="font-size: 0.85rem; color: #57606a;">${ new Date( latestRelease.published_at ).toLocaleDateString() }</span>
+                  ${ latestRelease.prerelease ? '<span style="font-size: 0.75rem; padding: 0.1rem 0.4rem; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 3px;">prerelease</span>' : '' }
+                </div>
+              </div>` : '';
+            const tagChipsHtml = tags.length ? `
+              <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                ${ tags.map( t => `<span data-action="select-tag" data-tag="${ escapeAttribute( t.name ) }"
+                  title="Browse repo at ${ escapeAttribute( t.name ) }"
+                  style="display: inline-block; padding: 0.2rem 0.6rem; background: var(--primary-bg); border: 1px solid var(--border-color); border-radius: 999px; font-family: monospace; font-size: 0.85rem; color: var(--highlight-color); cursor: pointer;">🏷️ ${ escapeHTML( t.name ) }</span>` ).join( '' ) }
+              </div>` : '';
+            tagsReleasesHtml = `<div style="margin-top: 1.5rem;">
+              <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem;">Releases & Tags</h3>
+              ${ latestReleaseHtml }
+              ${ tagChipsHtml }
+            </div>`;
+          }
+
+          // ── Commit activity sparkline (last 52 weeks) ──
+          // Note: /stats/participation returns 202 the first time GitHub computes the stats; render a hint in that case.
+          if ( participationResp.status === 202 ) {
+            commitActivityHtml = `<div style="margin-top: 1.5rem;">
+              <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem;">Commit Activity</h3>
+              <p style="font-size: 0.85rem; color: #57606a; margin: 0;">GitHub is computing stats — try again in a moment.</p>
+            </div>`;
+          } else if ( participationResp.ok ) {
+            const participation = await participationResp.json();
+            const weeks = Array.isArray( participation.all ) ? participation.all : [];
+            const total = weeks.reduce( ( s, n ) => s + n, 0 );
+            if ( weeks.length && total > 0 ) {
+              const max = Math.max( ...weeks, 1 );
+              const w = 4;
+              const gap = 1;
+              const h = 40;
+              const width = weeks.length * ( w + gap ) - gap;
+              const nowMs = Date.now();
+              const weekMs = 7 * 24 * 60 * 60 * 1000;
+              const bars = weeks.map( ( count, i ) => {
+                const barH = Math.max( 1, ( count / max ) * h );
+                const x = i * ( w + gap );
+                const y = h - barH;
+                const weeksAgo = weeks.length - 1 - i;
+                const date = new Date( nowMs - weeksAgo * weekMs );
+                const label = `${ date.toLocaleDateString() }: ${ count } commit${ count === 1 ? '' : 's' }`;
+                return `<rect x="${ x }" y="${ y.toFixed( 2 ) }" width="${ w }" height="${ barH.toFixed( 2 ) }" fill="var(--highlight-color)"><title>${ escapeHTML( label ) }</title></rect>`;
+              } ).join( '' );
+              const last4 = weeks.slice( -4 ).reduce( ( s, n ) => s + n, 0 );
+              const repoUrl = `https://github.com/${ owner }/${ state.repo }`;
+              commitActivityHtml = `<div style="margin-top: 1.5rem;">
+                <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem;">Commit Activity (last 52 weeks)</h3>
+                <div style="padding: 0.75rem; background: var(--primary-bg); border: 1px solid var(--border-color); border-radius: 6px;">
+                  <svg viewBox="0 0 ${ width } ${ h }" preserveAspectRatio="none" style="width: 100%; height: ${ h }px; display: block;" role="img" aria-label="Commits per week sparkline">${ bars }</svg>
+                  <div style="display: flex; justify-content: space-between; gap: 1rem; margin-top: 0.4rem; font-size: 0.8rem; color: #57606a;">
+                    <span>52 weeks ago</span>
+                    <span><strong>${ total.toLocaleString() }</strong> commits · last 4 wk: <strong>${ last4 }</strong></span>
+                    <span><a href="${ escapeAttribute( repoUrl ) }/graphs/commit-activity" target="_blank" rel="noopener" style="color: var(--highlight-color); text-decoration: none;">this week →</a></span>
+                  </div>
+                </div>
+              </div>`;
+            }
+          }
+
+          // ── Contributors ──
+          const contributors = contribsResp.ok ? await contribsResp.json() : [];
+          if ( Array.isArray( contributors ) && contributors.length ) {
+            contributorsHtml = `<div style="margin-top: 1.5rem;">
+              <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem;">Top Contributors</h3>
+              <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.75rem;">
+                ${ contributors.map( c => `
+                  <div data-action="select-owner" data-owner="${ escapeAttribute( c.login ) }"
+                    title="View ${ escapeAttribute( c.login ) }'s repos"
+                    style="display: flex; flex-direction: column; align-items: center; gap: 0.25rem; padding: 0.5rem; background: var(--primary-bg); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; text-align: center;">
+                    <img src="${ escapeAttribute( c.avatar_url ) }" alt="" style="width: 40px; height: 40px; border-radius: 50%;">
+                    <div style="font-size: 0.85rem; color: var(--highlight-color); font-weight: bold; word-break: break-all;">${ escapeHTML( c.login ) }</div>
+                    <div style="font-size: 0.75rem; color: #57606a;">${ c.contributions } commit${ c.contributions === 1 ? '' : 's' }</div>
+                  </div>` ).join( '' ) }
+              </div>
+            </div>`;
+          }
         }
 
         let html = `<div style="padding: 1.5rem; background: var(--secondary-bg); border: 1px solid var(--border-color); border-radius: 6px;">`;
         if ( isRepoLevel ) {
+          const repoUrl = data.html_url;
+          const linkStyle = 'color: var(--highlight-color); text-decoration: none;';
+          const topicsHtml = ( data.topics && data.topics.length ) ? `
+            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1rem;">
+              ${ data.topics.map( t => `<a href="https://github.com/topics/${ encodeURIComponent( t ) }" target="_blank" rel="noopener"
+                style="display: inline-block; padding: 0.15rem 0.6rem; background: #ddf4ff; color: #0969da; border-radius: 999px; font-size: 0.8rem; text-decoration: none; border: 1px solid #b6e3ff;">${ escapeHTML( t ) }</a>` ).join( '' ) }
+            </div>` : '';
           html += `
             <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
               <img src="${ escapeAttribute( data.owner.avatar_url ) }" style="width: 48px; height: 48px; border-radius: 50%;">
-              <h2 style="margin: 0;">Repository: <a href="${ escapeAttribute( data.html_url ) }" target="_blank" rel="noopener" style="color: var(--highlight-color); text-decoration: none;">${ escapeHTML( data.full_name ) }</a></h2>
+              <h2 style="margin: 0;">Repository: <a href="${ escapeAttribute( repoUrl ) }" target="_blank" rel="noopener" style="${ linkStyle }">${ escapeHTML( data.full_name ) }</a></h2>
             </div>
-            ${ data.description ? `<p style="font-size: 1.1rem; color: #57606a; margin-bottom: 1.5rem;">${ escapeHTML( data.description ) }</p>` : '' }
+            ${ data.description ? `<p style="font-size: 1.1rem; color: #57606a; margin-bottom: 1rem;">${ escapeHTML( data.description ) }</p>` : '' }
+            ${ topicsHtml }
             <ul style="list-style: none; padding: 0; line-height: 2; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem;">
-              <li>⭐ <strong>Stars:</strong> ${ data.stargazers_count }</li>
-              <li>👁️ <strong>Watchers:</strong> ${ data.watchers_count }</li>
-              <li>🔀 <strong>Forks:</strong> ${ data.forks_count }</li>
-              <li>🐛 <strong>Open Issues:</strong> ${ data.open_issues_count }</li>
+              <li>⭐ <strong>Stars:</strong> <a href="${ escapeAttribute( repoUrl ) }/stargazers" target="_blank" rel="noopener" style="${ linkStyle }">${ data.stargazers_count }</a></li>
+              <li>👁️ <strong>Watchers:</strong> <a href="${ escapeAttribute( repoUrl ) }/watchers" target="_blank" rel="noopener" style="${ linkStyle }">${ data.subscribers_count ?? data.watchers_count }</a></li>
+              <li>🔀 <strong>Forks:</strong> <a href="${ escapeAttribute( repoUrl ) }/network/members" target="_blank" rel="noopener" style="${ linkStyle }">${ data.forks_count }</a></li>
+              <li>🐛 <strong>Open Issues:</strong> <a href="${ escapeAttribute( repoUrl ) }/issues" target="_blank" rel="noopener" style="${ linkStyle }">${ data.open_issues_count }</a></li>
               <li>💻 <strong>Language:</strong> ${ escapeHTML( data.language || 'N/A' ) }</li>
-              <li>⚖️ <strong>License:</strong> ${ data.license ? escapeHTML( data.license.name ) : 'None' }</li>
-              <li>🕒 <strong>Created:</strong> ${ new Date( data.created_at ).toLocaleDateString() }</li>
-              <li>🔄 <strong>Updated:</strong> ${ new Date( data.updated_at ).toLocaleDateString() }</li>
+              <li>⚖️ <strong>License:</strong> ${ data.license ? `<a href="${ escapeAttribute( repoUrl ) }/blob/${ encodeURIComponent( state.branch ) }/LICENSE" target="_blank" rel="noopener" style="${ linkStyle }">${ escapeHTML( data.license.name ) }</a>` : 'None' }</li>
+              <li>🕒 <strong>Created:</strong> <span title="${ escapeAttribute( data.created_at ) }">${ new Date( data.created_at ).toLocaleDateString() }</span></li>
+              <li>🔄 <strong>Updated:</strong> <span title="${ escapeAttribute( data.updated_at ) }">${ new Date( data.updated_at ).toLocaleDateString() }</span></li>
               <li>📦 <strong>Size:</strong> ${ ( data.size / 1024 ).toFixed( 2 ) } MB</li>
-              ${ data.homepage ? `<li>🌐 <strong>Website:</strong> <a href="${ data.homepage.startsWith( 'http' ) ? escapeAttribute( data.homepage ) : 'http://' + escapeAttribute( data.homepage ) }" target="_blank" rel="noopener" style="color: var(--highlight-color); text-decoration: none;">${ escapeHTML( data.homepage ) }</a></li>` : '' }
-              <li>📄 <strong>Pages:</strong> ${ data.has_pages ? 'Enabled' : 'Disabled' }</li>
-            </ul>`;
+              ${ data.homepage ? `<li>🌐 <strong>Website:</strong> <a href="${ data.homepage.startsWith( 'http' ) ? escapeAttribute( data.homepage ) : 'http://' + escapeAttribute( data.homepage ) }" target="_blank" rel="noopener" style="${ linkStyle }">${ escapeHTML( data.homepage ) }</a></li>` : '' }
+              <li>📄 <strong>Pages:</strong> ${ data.has_pages ? `<a href="https://${ encodeURIComponent( owner ) }.github.io/${ encodeURIComponent( state.repo ) }/" target="_blank" rel="noopener" style="${ linkStyle }">Enabled</a>` : 'Disabled' }</li>
+            </ul>
+            ${ tagsReleasesHtml }
+            ${ commitActivityHtml }
+            ${ contributorsHtml }`;
 
           // ── Repository Stats from tree data ──
           if ( state.tree.length ) {
@@ -1037,7 +1277,7 @@
         mainContent.innerHTML = html;
       } catch ( error ) {
         if ( error.name === 'AbortError' ) return returnHtml ? '' : undefined;
-        if ( error.message.includes( '403' ) ) error.message += ' (Rate limit exceeded. Click "⚙️ Token" to increase limit.)';
+        if ( error.message.includes( '403' ) ) { if ( !returnHtml ) showTokenPanel( RATE_LIMIT_REASON_HTML ); return returnHtml ? '' : undefined; }
         const msg = `<p class="error">Error fetching stats: ${ escapeHTML( error.message ) }</p>`;
         if ( returnHtml ) return msg;
         mainContent.innerHTML = msg;
@@ -1089,7 +1329,8 @@
 
         repoListContainer.style.display = 'none';
         navTree.style.display = 'block';
-        navTree.querySelector( 'h3' ).innerHTML = `Files ${ branchesHtml }`;
+        navTree.querySelector( 'h3' ).style.display = 'flex';
+        document.getElementById( 'branchSelector' ).innerHTML = branchesHtml;
 
         btnMainAction.textContent = '← Back to Repos';
         btnMainAction.dataset.action = 'back-to-repos';
@@ -1112,7 +1353,7 @@
         }
       } catch ( error ) {
         if ( error.name === 'AbortError' ) return;
-        if ( error.message.includes( '403' ) ) error.message += ' (Rate limit exceeded. Click "⚙️ Token" to increase limit.)';
+        if ( error.message.includes( '403' ) ) { showTokenPanel( RATE_LIMIT_REASON_HTML ); return; }
         mainContent.innerHTML = `<p class="error">Error loading repo tree: ${ escapeHTML( error.message ) }</p>`;
       }
     };
@@ -1155,7 +1396,7 @@
         if ( autoOpenFile && firstFile ) handleSelectFile( firstFile.path, true );
       } catch ( error ) {
         if ( error.name === 'AbortError' ) return;
-        if ( error.message.includes( '403' ) ) error.message += ' (Rate limit exceeded. Click "⚙️ Token" to increase limit.)';
+        if ( error.message.includes( '403' ) ) { showTokenPanel( RATE_LIMIT_REASON_HTML ); return; }
         mainContent.innerHTML = `<p class="error">Error loading gist: ${ escapeHTML( error.message ) }</p>`;
       }
     };
@@ -1244,16 +1485,16 @@
         const options = getFetchOptions( true );
         const url = ( state.isGist && fileNode?.url )
           ? fileNode.url
-          : `https://raw.githubusercontent.com/${ encodeURIComponent( state.owner ) }/${ encodeURIComponent( state.repo ) }/${ encodeURIComponent( state.branch ) }/${ encodePath( path ) }`;
+          : `https://raw.githubusercontent.com/${ encodeURIComponent( state.owner ) }/${ encodeURIComponent( state.repo ) }/${ encodeURIComponent( state.branch ) }/${ getHashPath( path ) }`;
         const ext = path.split( '.' ).pop().toLowerCase();
 
         const githubLink = state.isGist
           ? `https://gist.github.com/${ encodeURIComponent( state.owner ) }/${ encodeURIComponent( state.repo ) }#file-${ getGistFileAnchor( path ) }`
-          : `https://github.com/${ encodeURIComponent( state.owner ) }/${ encodeURIComponent( state.repo ) }/blob/${ encodeURIComponent( state.branch ) }/${ encodePath( path ) }`;
+          : `https://github.com/${ encodeURIComponent( state.owner ) }/${ encodeURIComponent( state.repo ) }/blob/${ encodeURIComponent( state.branch ) }/${ getHashPath( path ) }`;
 
         const newTabUrl = state.isGist
           ? url
-          : `https://${ encodeURIComponent( state.owner ) }.github.io/${ encodeURIComponent( state.repo ) }/${ encodePath( path ) }`;
+          : `https://${ encodeURIComponent( state.owner ) }.github.io/${ encodeURIComponent( state.repo ) }/${ getHashPath( path ) }`;
 
         const pathParts = path.split( '/' );
         const fileName = pathParts.pop();
@@ -1278,11 +1519,11 @@
               </a>
             </h3>
             <div class="file-actions">
-              <button data-action="open-url" data-url="${ escapeAttribute( newTabUrl ) }" class="file-btn" title="Open in new tab">New Tab</button>
               <div id="fileViewToggles" class="file-actions" style="display: none;">
                 <button id="btnRendered" data-action="toggle-file-view" data-view="rendered" class="file-btn">Rendered</button>
                 <button id="btnRaw" data-action="toggle-file-view" data-view="raw" class="file-btn" style="opacity: 0.5;">Raw</button>
               </div>
+              <button data-action="open-url" data-url="${ escapeAttribute( newTabUrl ) }" class="file-btn" title="Open in new tab">New Tab</button>
             </div>
           </div>`;
 
@@ -1353,7 +1594,7 @@
       navTree.style.display = 'none';
       resetMainAction();
       btnToggleFolders.style.display = 'none';
-      mainContent.innerHTML = '<p>Select a repository.</p>';
+      handleFetchStats();
     };
 
     // ── Tree rendering ────────────────────────────────────────────────────────
@@ -1447,6 +1688,8 @@
       };
       sorted.sort( comparators[ sortBy ] || comparators.updated );
       repoList.innerHTML = sorted.map( state.repoRenderer ).join( '' );
+      // Re-append the Load More / Load all controls so sorting doesn't hide them.
+      if ( state.repoLoadMoreHtml ) repoList.insertAdjacentHTML( 'beforeend', state.repoLoadMoreHtml );
       filterList();
     };
 
@@ -1570,7 +1813,7 @@
       else if ( action === 'fetch-stats' ) handleFetchStats();
       else if ( action === 'discover' ) handleDiscover();
       else if ( action === 'toggle-folders' ) toggleAllFolders();
-      else if ( action === 'prompt-token' ) promptForToken();
+      else if ( action === 'prompt-token' ) showTokenPanel();
       else if ( action === 'back-to-repos' ) handleBackToRepos();
       else if ( action === 'back-to-search' ) {
         resetMainAction();
@@ -1589,11 +1832,18 @@
       else if ( action === 'load-more-repos' ) handleFetchRepos( false, Number( el.dataset.page ) );
       else if ( action === 'load-more-orgs' ) handleFetchOrgs( Number( el.dataset.page ) );
       else if ( action === 'load-more-gists' ) handleFetchGists( Number( el.dataset.page ) );
+      else if ( action === 'load-all' ) handleLoadAll( el.dataset.kind );
     } );
 
     treeList.addEventListener( 'click', e => {
       const el = e.target.closest( '[data-action="select-file"]' );
       if ( el ) handleSelectFile( el.dataset.path );
+    } );
+
+    navTree.addEventListener( 'click', e => {
+      const el = e.target.closest( '[data-action]' );
+      if ( !el ) return;
+      if ( el.dataset.action === 'toggle-folders' ) toggleAllFolders();
     } );
 
     navTree.addEventListener( 'change', e => {
@@ -1622,6 +1872,8 @@
         handleSearchTopUsers();
       } else if ( action === 'reload-page' ) {
         location.reload();
+      } else if ( action === 'select-tag' ) {
+        handleSelectRepo( state.repo, true, el.dataset.tag );
       }
     } );
 
@@ -1733,11 +1985,35 @@
       );
     } );
 
+    // ── Rate limit display ─────────────────────────────────────────────────────
+
+    const fetchRateLimit = async () => {
+      const el = document.getElementById( 'rateLimitDisplay' );
+      if ( !el ) return;
+      try {
+        const resp = await fetch( 'https://api.github.com/rate_limit', { headers } );
+        if ( !resp.ok ) return;
+        const data = await resp.json();
+        const { remaining, limit, reset } = data.resources.core;
+        const resetMin = Math.ceil( ( reset * 1000 - Date.now() ) / 60000 );
+        el.textContent = `API: ${ remaining }/${ limit } (resets ${ resetMin }m)`;
+        el.style.color = remaining < 10 ? '#cf222e' : remaining < 100 ? '#9a6700' : '#57606a';
+      } catch ( e ) { /* silently ignore */ }
+    };
+
     // ── Init ──────────────────────────────────────────────────────────────────
 
     ownerInput.value = CONFIG.owner;
     state.owner = CONFIG.owner;
     updateRecentUsers();
+    fetchRateLimit();
+    // If a token is stored, look up its login so we know when to call /user/repos for private-repo access.
+    if ( ghToken ) {
+      fetch( 'https://api.github.com/user', { headers } )
+        .then( r => r.ok ? r.json() : null )
+        .then( u => { if ( u && u.login ) authedLogin = u.login.toLowerCase(); } )
+        .catch( () => { /* token may be invalid; ignore */ } );
+    }
     if ( location.hash ) {
       handleHashChange();
     } else {

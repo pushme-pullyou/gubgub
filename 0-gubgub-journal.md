@@ -1,5 +1,17 @@
 # GubGub Journal
 
+## 2026-04-29
+
+Worked with both Codex and Claude. Both useful and not conflicting much with each other
+
+* 2026-04-26 GitHub logo to left
+* don't use .archive files for checking
+* 2026-04-26 ~ root folder readme
+* expand all same color
+
+Deprecated
+
+* Allow private repos to open with gat
 
 ## 2026-04-22
 
@@ -14,6 +26,19 @@ Release: R-2026-04-22
 * theo-armour / sandbox ~ https://theo-armour.github.io/sandbox/
 * theo-armour / aa ~ https://theo-armour.github.io/aa/
 * heritage-happenings / tech ~ https://heritage-happenings.github.io/tech/
+
+
+## Journal
+
+* 2026-04-10
+* 2026-04-09 ~ auto-configure repo, org, and gists based on URL ??
+* 2026-04-09 ~ Check out GitHub's MCP Server.
+* 2026-04-05 ~ DabDab: EditHub
+* Links to all your followers or stars givers
+* Link to GitHub explore
+* GubGub AtLarge for multiple users and/or multiple websites ~ ViewHub
+* 2026-04-09 ~ copy TooToo over to here name?
+* 2026-04-09 ~ Build at least the skeleton of the README.
 
 ### 2026-04-09
 
