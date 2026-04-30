@@ -43,7 +43,7 @@ GubGub should feel like a fast, lightweight file and repo browser.
 
 - Edit [`index.html`](index.html) directly; it is the canonical single-file app
 - Make small, reversible changes rather than impressive rewrites
-- Archive dated snapshots as `index-YYYY-MM-DD-HH-MM.html` before larger rewrites
+- Archive dated snapshots as `index-YYYY-MM-DD-HH-MM.html` before all rewrites
 - Keep changelogs in `README.md` with dated bullet entries when the README is maintained
 - Test by opening [`gubgub-test.html`](gubgub-test.html) and by manually opening `index.html`
 - Do not use `.archive/` files as source references unless explicitly asked
