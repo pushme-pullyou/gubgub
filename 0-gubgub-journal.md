@@ -1,4 +1,4 @@
-# Tootoo Journal
+# GubGub Journal
 
 
 ## 2026-04-22

@@ -126,10 +126,6 @@
       text-decoration: underline;
     }
 
-    .user-card:hover {
-      background: var(--hover-bg) !important;
-    }
-
     .repo-meta {
       display: flex;
       gap: 0.5rem;
@@ -298,7 +294,8 @@
 
   <header>
     <strong style="cursor: pointer;" data-action="reload-app" title="Reload GubGub">GubGub</strong>
-    <input type="text" id="ownerInput" placeholder="Enter user or org name" autocomplete="off" list="recentUsers" />
+    <input type="text" id="ownerInput" placeholder="Enter user or org name" autocomplete="off"
+      oninput="resetMainAction()" onchange="handleFetchRepos()" list="recentUsers" />
     <datalist id="recentUsers"></datalist>
     <button data-action="open-owner-profile" title="Open user's GitHub profile"
       style="background: transparent; color: var(--text-color); border: 1px solid var(--border-color); padding: 0.4rem; display: flex; align-items: center; justify-content: center;">
@@ -324,9 +321,9 @@
     <div class="sidebar">
       <div id="repoListContainer">
         <h3 style="margin: 0 0 0.35rem 0; font-size: 0.95rem;">Repositories</h3>
-        <input type="text" id="filterInput" placeholder="Filter items..."
+        <input type="text" id="filterInput" placeholder="Filter items..." oninput="filterList()"
           style="width: 100%; box-sizing: border-box; margin-bottom: 0.25rem; padding: 0.3rem 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.9rem;" />
-        <select id="sortSelect"
+        <select id="sortSelect" onchange="sortRepoList()"
           style="width: 100%; box-sizing: border-box; margin-bottom: 0.25rem; padding: 0.25rem; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.8rem; display: none;">
           <option value="updated">Sort: Recently Updated</option>
           <option value="stars">Sort: Stars</option>
@@ -420,8 +417,6 @@
     const btnMainAction = document.getElementById( 'btnMainAction' );
     const btnToggleFolders = document.getElementById( 'btnToggleFolders' );
     const recentUsersDataList = document.getElementById( 'recentUsers' );
-    const filterInput = document.getElementById( 'filterInput' );
-    const sortSelect = document.getElementById( 'sortSelect' );
 
     // ── Utilities ───────────────────────────────────────────────────────────
 
@@ -439,29 +434,6 @@
     };
 
     const getLargeFileApprovalKey = path => `${ state.owner }/${ state.repo }/${ state.branch }/${ path }`;
-
-    const encodePath = path => path.split( '/' ).map( encodeURIComponent ).join( '/' );
-
-    const getHashPath = path => path.split( '/' ).map( encodeURIComponent ).join( '/' );
-
-    const getGistFileAnchor = path => path
-      .toLowerCase()
-      .replace( /[^a-z0-9]+/g, '-' )
-      .replace( /^-+|-+$/g, '' );
-
-    const isReadmePath = path => /^readme(\.(md|markdown|txt))?$/i.test( path.split( '/' ).pop() );
-
-    const getReadmePriority = item => {
-      if ( item.type !== 'blob' || !isReadmePath( item.path ) ) return Infinity;
-      const depth = item.path.split( '/' ).length;
-      const ext = item.path.split( '.' ).pop().toLowerCase();
-      const extRank = ext === 'md' ? 0 : ext === 'markdown' ? 1 : ext === 'txt' ? 2 : 3;
-      return depth * 10 + extRank;
-    };
-
-    const findBestReadme = tree => [ ...tree ]
-      .sort( ( a, b ) => getReadmePriority( a ) - getReadmePriority( b ) || a.path.localeCompare( b.path ) )
-      .find( item => getReadmePriority( item ) !== Infinity );
 
     const confirmLargeFileLoad = ( path, size ) => {
       if ( size == null || size < LARGE_FILE_WARNING_BYTES ) return true;
@@ -500,54 +472,44 @@
     const updateHash = () => {
       let hash;
       if ( state.isGist ) {
-        hash = `#gist/${ encodeURIComponent( state.repo ) }${ state.currentFilePath ? '/' + getHashPath( state.currentFilePath ) : '' }`;
+        hash = `#gist/${ state.repo }${ state.currentFilePath ? '/' + state.currentFilePath : '' }`;
       } else {
-        hash = `#${ encodeURIComponent( state.owner ) }`;
+        hash = `#${ state.owner }`;
         if ( state.repo ) {
-          hash += `/${ encodeURIComponent( state.repo ) }`;
-          if ( state.branch ) hash += `/tree/${ encodeURIComponent( state.branch ) }`;
-          if ( state.currentFilePath ) hash += `/${ getHashPath( state.currentFilePath ) }`;
+          hash += `/${ state.repo }`;
+          if ( state.currentFilePath ) hash += `/${ state.currentFilePath }`;
         }
       }
-      if ( location.hash !== hash ) {
-        history.pushState( null, '', hash );
-        lastHandledHash = hash.replace( /^#\/?/, '' );
-      }
+      if ( location.hash !== hash ) history.pushState( null, '', hash );
     };
-
-    let lastHandledHash = null;
 
     const handleHashChange = async () => {
       const hash = location.hash.replace( /^#\/?/, '' );
-      if ( hash === lastHandledHash ) return;
-      lastHandledHash = hash;
       if ( !hash ) { handleFetchRepos(); return; }
 
       const parts = hash.split( '/' );
 
       if ( parts[ 0 ] === 'gist' ) {
-        const gistId = decodeURIComponent( parts[ 1 ] || '' );
+        const gistId = parts[ 1 ];
         const fp = decodeURIComponent( parts.slice( 2 ).join( '/' ) );
         if ( gistId && state.repo !== gistId ) await handleSelectGist( gistId, !fp );
         if ( fp && state.currentFilePath !== fp ) await handleSelectFile( fp, false );
         return;
       }
 
-      const owner = decodeURIComponent( parts[ 0 ] || '' );
-      const repo = decodeURIComponent( parts[ 1 ] || '' );
-      const hasBranch = parts[ 2 ] === 'tree';
-      const branch = hasBranch ? decodeURIComponent( parts[ 3 ] || '' ) : null;
-      const fpStart = hasBranch ? 4 : 2;
-      const fp = decodeURIComponent( parts.slice( fpStart ).join( '/' ) );
+      const owner = parts[ 0 ];
+      const repo = parts[ 1 ];
+      const fp = decodeURIComponent( parts.slice( 2 ).join( '/' ) );
 
       if ( owner && owner !== state.owner ) {
         ownerInput.value = owner;
         await handleFetchRepos( false );
       }
-      if ( repo && ( state.repo !== repo || ( branch && state.branch !== branch ) ) ) await handleSelectRepo( repo, !fp, branch );
+      if ( repo && state.repo !== repo ) await handleSelectRepo( repo, !fp );
       if ( fp && state.currentFilePath !== fp ) await handleSelectFile( fp, false );
     };
 
+    window.addEventListener( 'popstate', handleHashChange );
     window.addEventListener( 'hashchange', handleHashChange );
 
     // ── Button state ────────────────────────────────────────────────────────
@@ -574,7 +536,7 @@
         mainContent.innerHTML = `<p>Loading ${ config.label.toLowerCase() }...</p>`;
         repoList.innerHTML = '';
         repoListContainer.querySelector( 'h3' ).textContent = config.label;
-        filterInput.value = '';
+        document.getElementById( 'filterInput' ).value = '';
 
         repoListContainer.style.display = 'block';
         navTree.style.display = 'none';
@@ -598,9 +560,9 @@
           if ( config.page > 1 ) state.repoItems.push( ...items );
           else state.repoItems = [ ...items ];
           state.repoRenderer = config.itemRenderer;
-          sortSelect.style.display = 'block';
+          document.getElementById( 'sortSelect' ).style.display = 'block';
         } else {
-          sortSelect.style.display = 'none';
+          document.getElementById( 'sortSelect' ).style.display = 'none';
         }
 
         if ( config.page > 1 ) repoList.insertAdjacentHTML( 'beforeend', html );
@@ -1050,6 +1012,7 @@
       state.repo = repoName;
       state.branch = branch || 'main';
       state.currentFilePath = '';
+      if ( autoOpenReadme ) updateHash();
       mainContent.innerHTML = `<p>Loading ${ escapeHTML( repoName ) }...</p>`;
 
       try {
@@ -1062,14 +1025,12 @@
           state.branch = repoData.default_branch;
         }
 
-        if ( autoOpenReadme ) updateHash();
-
         const branchesResp = await fetch( `https://api.github.com/repos/${ state.owner }/${ state.repo }/branches?per_page=100`, options );
         let branchesHtml = '';
         if ( branchesResp.ok ) {
           const branches = await branchesResp.json();
           branchesHtml = `<select data-repo="${ escapeAttribute( state.repo ) }"
-            data-action="select-branch"
+            onchange="handleSelectRepo(this.dataset.repo, true, this.value)"
             style="margin-left: 0.5rem; padding: 0.2rem; border-radius: 4px; max-width: 120px;">
             ${ branches.map( b =>
             `<option value="${ escapeAttribute( b.name ) }"${ b.name === state.branch ? ' selected' : '' }>${ escapeHTML( b.name ) }</option>`
@@ -1102,8 +1063,10 @@
 
         renderTree( state.tree );
 
-        // Auto-open README — spec: hash is NOT updated for the auto-display
-        const readmeFile = findBestReadme( state.tree );
+        // Auto-open README — spec: hash is NOT updated for this auto-display
+        const readmeFile = state.tree.find( item =>
+          item.type === 'blob' && /^readme(\.md|\.txt)?$/i.test( item.path.split( '/' ).pop() )
+        );
 
         if ( autoOpenReadme && readmeFile ) {
           handleSelectFile( readmeFile.path, false );
@@ -1244,16 +1207,16 @@
         const options = getFetchOptions( true );
         const url = ( state.isGist && fileNode?.url )
           ? fileNode.url
-          : `https://raw.githubusercontent.com/${ encodeURIComponent( state.owner ) }/${ encodeURIComponent( state.repo ) }/${ encodeURIComponent( state.branch ) }/${ encodePath( path ) }`;
+          : `https://raw.githubusercontent.com/${ state.owner }/${ state.repo }/${ state.branch }/${ path }`;
         const ext = path.split( '.' ).pop().toLowerCase();
 
         const githubLink = state.isGist
-          ? `https://gist.github.com/${ encodeURIComponent( state.owner ) }/${ encodeURIComponent( state.repo ) }#file-${ getGistFileAnchor( path ) }`
-          : `https://github.com/${ encodeURIComponent( state.owner ) }/${ encodeURIComponent( state.repo ) }/blob/${ encodeURIComponent( state.branch ) }/${ encodePath( path ) }`;
+          ? `https://gist.github.com/${ state.owner }/${ state.repo }#file-${ path.replace( /\./g, '-' ) }`
+          : `https://github.com/${ state.owner }/${ state.repo }/blob/${ state.branch }/${ path }`;
 
         const newTabUrl = state.isGist
           ? url
-          : `https://${ encodeURIComponent( state.owner ) }.github.io/${ encodeURIComponent( state.repo ) }/${ encodePath( path ) }`;
+          : `https://${ state.owner }.github.io/${ state.repo }/${ path }`;
 
         const pathParts = path.split( '/' );
         const fileName = pathParts.pop();
@@ -1427,7 +1390,7 @@
     const filterList = () => {
       clearTimeout( filterTimeout );
       filterTimeout = setTimeout( () => {
-        const filter = filterInput.value.toLowerCase();
+        const filter = document.getElementById( 'filterInput' ).value.toLowerCase();
         document.querySelectorAll( '#repoList li' ).forEach( li => {
           li.style.display = li.textContent.toLowerCase().includes( filter ) ? '' : 'none';
         } );
@@ -1436,7 +1399,7 @@
 
     const sortRepoList = () => {
       if ( !state.repoItems.length || !state.repoRenderer ) return;
-      const sortBy = sortSelect.value;
+      const sortBy = document.getElementById( 'sortSelect' ).value;
       const sorted = [ ...state.repoItems ];
       const comparators = {
         updated: ( a, b ) => new Date( b.updated_at ) - new Date( a.updated_at ),
@@ -1531,9 +1494,10 @@
 
         const cardsHtml = data.items.map( user => `
           <div style="background: var(--secondary-bg); border: 1px solid var(--border-color); padding: 1rem; border-radius: 6px; text-align: center; cursor: pointer; transition: background 0.2s;"
-               class="user-card"
                data-login="${ escapeAttribute( user.login ) }"
-               data-action="select-login">
+               data-action="select-login"
+               onmouseover="this.style.background='var(--hover-bg)'"
+               onmouseout="this.style.background='var(--secondary-bg)'">
             <img src="${ escapeAttribute( user.avatar_url ) }" style="width: 64px; height: 64px; border-radius: 50%; margin-bottom: 0.5rem; border: 1px solid var(--border-color);">
             <div style="font-weight: bold; color: var(--highlight-color); font-size: 1.1rem;">${ escapeHTML( user.login ) }</div>
           </div>` ).join( '' );
@@ -1549,11 +1513,6 @@
     };
 
     // ── Event delegation ──────────────────────────────────────────────────────
-
-    ownerInput.addEventListener( 'input', resetMainAction );
-    ownerInput.addEventListener( 'change', () => handleFetchRepos() );
-    filterInput.addEventListener( 'input', filterList );
-    sortSelect.addEventListener( 'change', sortRepoList );
 
     appHeader.addEventListener( 'click', e => {
       const el = e.target.closest( '[data-action]' );
@@ -1594,11 +1553,6 @@
     treeList.addEventListener( 'click', e => {
       const el = e.target.closest( '[data-action="select-file"]' );
       if ( el ) handleSelectFile( el.dataset.path );
-    } );
-
-    navTree.addEventListener( 'change', e => {
-      const el = e.target.closest( '[data-action="select-branch"]' );
-      if ( el ) handleSelectRepo( el.dataset.repo, true, el.value );
     } );
 
     mainContent.addEventListener( 'click', e => {

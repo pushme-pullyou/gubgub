@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GubGub Test Runner</title>
+  <style>
+    :root {
+      --bg: #f7f2e8;
+      --panel: #fffaf0;
+      --ink: #24201a;
+      --muted: #756f63;
+      --line: #d8ccb8;
+      --pass: #1f7a4d;
+      --warn: #a76500;
+      --fail: #b42318;
+      --accent: #245c73;
+      --shadow: 0 18px 45px rgba(36, 32, 26, 0.12);
+      --font: ui-sans-serif, "Segoe UI", Candara, Calibri, sans-serif;
+      --mono: "Cascadia Code", Consolas, "Liberation Mono", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(36, 92, 115, 0.18), transparent 32rem),
+        linear-gradient(135deg, #f7f2e8, #efe3cf 55%, #e7d6ba);
+      font-family: var(--font);
+    }
+
+    main {
+      width: min(1180px, calc(100vw - 2rem));
+      margin: 0 auto;
+      padding: 2rem 0 3rem;
+    }
+
+    header {
+      display: grid;
+      gap: 0.8rem;
+      margin-bottom: 1.5rem;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2rem, 5vw, 4rem);
+      letter-spacing: -0.06em;
+      line-height: 0.95;
+    }
+
+    h2 {
+      margin: 0 0 0.75rem;
+      font-size: 1.1rem;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    button {
+      width: fit-content;
+      border: 0;
+      border-radius: 999px;
+      padding: 0.65rem 1rem;
+      color: #fff;
+      background: var(--accent);
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 8px 22px rgba(36, 92, 115, 0.22);
+    }
+
+    button:disabled {
+      cursor: progress;
+      opacity: 0.7;
+    }
+
+    .panel {
+      background: rgba(255, 250, 240, 0.88);
+      border: 1px solid var(--line);
+      border-radius: 1.25rem;
+      padding: 1rem;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .card {
+      min-height: 6rem;
+      display: grid;
+      align-content: center;
+      gap: 0.35rem;
+    }
+
+    .card strong {
+      font-size: 2.2rem;
+      line-height: 1;
+    }
+
+    .card span {
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.55fr);
+      gap: 1rem;
+      align-items: start;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      border-radius: 999px;
+      padding: 0.3rem 0.65rem;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .pass {
+      color: var(--pass);
+      background: rgba(31, 122, 77, 0.1);
+    }
+
+    .warn {
+      color: var(--warn);
+      background: rgba(167, 101, 0, 0.12);
+    }
+
+    .fail {
+      color: var(--fail);
+      background: rgba(180, 35, 24, 0.12);
+    }
+
+    .pending {
+      color: var(--muted);
+      background: rgba(117, 111, 99, 0.12);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 0.9rem;
+    }
+
+    th,
+    td {
+      padding: 0.75rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: rgba(216, 204, 184, 0.28);
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    code,
+    pre {
+      font-family: var(--mono);
+      font-size: 0.86rem;
+    }
+
+    pre {
+      max-height: 38rem;
+      overflow: auto;
+      margin: 0;
+      white-space: pre-wrap;
+      color: #3b352b;
+    }
+
+    .note-list {
+      display: grid;
+      gap: 0.75rem;
+      margin: 0;
+      padding-left: 1.15rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    iframe {
+      position: fixed;
+      right: 1rem;
+      bottom: 1rem;
+      width: 420px;
+      height: 280px;
+      border: 1px solid var(--line);
+      border-radius: 1rem;
+      background: #fff;
+      opacity: 0.08;
+      pointer-events: none;
+    }
+
+    @media (max-width: 850px) {
+      .summary,
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      iframe {
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <header>
+      <h1>GubGub Test Runner</h1>
+      <p>
+        Open this file in a browser and it will inspect <code>index.html</code>, load it in an iframe,
+        probe the environment, and report what passed, warned, or failed. No clicking inside GubGub required.
+      </p>
+      <button id="rerunButton" type="button">Run Again</button>
+    </header>
+
+    <section class="summary">
+      <div class="panel card">
+        <strong id="passCount">0</strong>
+        <span>Passed</span>
+      </div>
+      <div class="panel card">
+        <strong id="warnCount">0</strong>
+        <span>Warnings</span>
+      </div>
+      <div class="panel card">
+        <strong id="failCount">0</strong>
+        <span>Failed</span>
+      </div>
+      <div class="panel card">
+        <strong id="runTime">0s</strong>
+        <span>Runtime</span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <div class="toolbar">
+          <h2>Checks</h2>
+          <span id="overallStatus" class="status pending">Running</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Check</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+
+      <aside class="panel">
+        <h2>What This Does Not Prove</h2>
+        <ul class="note-list">
+          <li>Browser security can block file reads differently across browsers. The iframe path usually works best for local testing.</li>
+          <li>GitHub API checks depend on network access and rate limits, so those are reported as warnings unless the app itself is broken.</li>
+          <li>This is a smoke and regression runner, not a substitute for human visual review in the browser.</li>
+          <li>Because <code>index.html</code> is not built as a module, this runner checks behavior through the DOM and source patterns rather than importing functions directly.</li>
+        </ul>
+        <h2 style="margin-top: 1.5rem;">Raw Report</h2>
+        <pre id="rawReport">[]</pre>
+      </aside>
+    </section>
+  </main>
+
+  <iframe id="targetFrame" title="GubGub under test"></iframe>
+
+  <script>
+    const TARGET_FILE = 'index.html';
+    const INTEGRATION_HASH = '#octocat/Hello-World/tree/master/README';
+    const TEST_TIMEOUT_MS = 18000;
+
+    const resultsBody = document.getElementById( 'resultsBody' );
+    const rawReport = document.getElementById( 'rawReport' );
+    const rerunButton = document.getElementById( 'rerunButton' );
+    const targetFrame = document.getElementById( 'targetFrame' );
+    const passCount = document.getElementById( 'passCount' );
+    const warnCount = document.getElementById( 'warnCount' );
+    const failCount = document.getElementById( 'failCount' );
+    const runTime = document.getElementById( 'runTime' );
+    const overallStatus = document.getElementById( 'overallStatus' );
+
+    const report = [];
+
+    const escapeHTML = value => String( value ).replace( /[&<>'"]/g, char => ( {
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    } )[ char ] );
+
+    const setStatus = ( element, status, text ) => {
+      element.className = `status ${ status }`;
+      element.textContent = text;
+    };
+
+    const stripStringsAndComments = source => source
+      .replace( /\/\*[\s\S]*?\*\//g, '' )
+      .replace( /\/\/.*$/gm, '' )
+      .replace( /`(?:\\[\s\S]|[^`\\])*`/g, '``' )
+      .replace( /"(?:\\.|[^"\\])*"/g, '""' )
+      .replace( /'(?:\\.|[^'\\])*'/g, "''" );
+
+    const addResult = ( status, name, details = '' ) => {
+      const item = {
+        status,
+        name,
+        details,
+        time: new Date().toISOString()
+      };
+      report.push( item );
+
+      const row = document.createElement( 'tr' );
+      row.innerHTML = `
+        <td><span class="status ${ status }">${ escapeHTML( status ) }</span></td>
+        <td><strong>${ escapeHTML( name ) }</strong></td>
+        <td>${ escapeHTML( details ) }</td>`;
+      resultsBody.append( row );
+
+      rawReport.textContent = JSON.stringify( report, null, 2 );
+      updateSummary();
+    };
+
+    const updateSummary = () => {
+      const counts = report.reduce( ( memo, item ) => {
+        memo[ item.status ] = ( memo[ item.status ] || 0 ) + 1;
+        return memo;
+      }, {} );
+      passCount.textContent = counts.pass || 0;
+      warnCount.textContent = counts.warn || 0;
+      failCount.textContent = counts.fail || 0;
+
+      if ( counts.fail ) setStatus( overallStatus, 'fail', 'Needs Attention' );
+      else if ( counts.warn ) setStatus( overallStatus, 'warn', 'Usable With Warnings' );
+      else setStatus( overallStatus, 'pass', 'Passing' );
+    };
+
+    const pass = ( name, details ) => addResult( 'pass', name, details );
+    const warn = ( name, details ) => addResult( 'warn', name, details );
+    const fail = ( name, details ) => addResult( 'fail', name, details );
+
+    const wait = ms => new Promise( resolve => {
+      setTimeout( resolve, ms );
+    } );
+
+    const withTimeout = ( promise, ms, label ) => Promise.race( [
+      promise,
+      new Promise( ( resolve, reject ) => {
+        setTimeout( () => reject( new Error( `${ label } timed out after ${ ms }ms` ) ), ms );
+      } )
+    ] );
+
+    const loadTargetFrame = () => new Promise( ( resolve, reject ) => {
+      const timer = setTimeout( () => reject( new Error( 'iframe load timed out' ) ), TEST_TIMEOUT_MS );
+      targetFrame.onload = () => {
+        clearTimeout( timer );
+        resolve( targetFrame.contentWindow );
+      };
+      targetFrame.onerror = () => {
+        clearTimeout( timer );
+        reject( new Error( 'iframe failed to load' ) );
+      };
+      targetFrame.src = `${ TARGET_FILE }?test=${ Date.now() }`;
+    } );
+
+    const getFrameDocument = win => {
+      try {
+        return win.document;
+      } catch ( error ) {
+        return null;
+      }
+    };
+
+    const getSourceFromFrame = doc => {
+      if ( !doc ) return '';
+      return `<!DOCTYPE html>\n${ doc.documentElement.outerHTML }`;
+    };
+
+    const getScriptSource = doc => {
+      if ( !doc ) return '';
+      return Array.from( doc.scripts ).map( script => script.textContent || '' ).join( '\n\n' );
+    };
+
+    const queryAll = ( doc, selector ) => Array.from( doc.querySelectorAll( selector ) );
+
+    const runStaticChecks = ( source, scriptSource ) => {
+      if ( !source ) {
+        fail( 'Source available', 'Could not read index.html source from the iframe. Try serving the folder with a local static server.' );
+        return;
+      }
+
+      pass( 'Source available', `Read ${ source.length.toLocaleString() } characters from ${ TARGET_FILE }.` );
+
+      const dependencyChecks = [
+        [ 'marked dependency', /marked\/marked\.min\.js/.test( source ) ],
+        [ 'highlight.js dependency', /highlight\.min\.js/.test( source ) ],
+        [ 'DOMPurify dependency', /dompurify@3\/dist\/purify\.min\.js/.test( source ) ]
+      ];
+      dependencyChecks.forEach( ( [ name, ok ] ) => {
+        if ( ok ) pass( name, 'Expected CDN reference found.' );
+        else fail( name, 'Expected CDN reference was not found.' );
+      } );
+
+      if ( /DOMPurify\.sanitize\(\s*marked\.parse/.test( scriptSource ) ) {
+        pass( 'Markdown sanitization', 'Markdown output is sanitized through DOMPurify.' );
+      } else {
+        fail( 'Markdown sanitization', 'Could not find DOMPurify.sanitize(marked.parse(...)).' );
+      }
+
+      if ( /sandbox="allow-scripts"/.test( source ) ) {
+        pass( 'HTML preview sandbox', 'Rendered HTML previews are sandboxed.' );
+      } else {
+        warn( 'HTML preview sandbox', 'Could not confirm sandboxed HTML previews.' );
+      }
+
+      if ( /rel="noopener"/.test( source ) && /window\.open\([^)]*'noopener'/.test( scriptSource ) ) {
+        pass( 'New-tab isolation', 'External links and window.open calls use noopener.' );
+      } else {
+        warn( 'New-tab isolation', 'Some new-tab paths may not use noopener.' );
+      }
+
+      if ( /encodePath\s*=/.test( scriptSource ) && /encodePath\(\s*path\s*\)/.test( scriptSource ) ) {
+        pass( 'Reserved filename URL encoding', 'Path segments are encoded before raw/GitHub/Pages URL construction.' );
+      } else {
+        fail( 'Reserved filename URL encoding', 'Could not confirm encoded path handling.' );
+      }
+
+      if ( /\/tree\/\$\{\s*encodeURIComponent\(\s*state\.branch\s*\)/.test( scriptSource ) && /const hasBranch = parts\[ 2 \] === 'tree'/.test( scriptSource ) ) {
+        pass( 'Branch-aware hash routes', 'Hashes include and parse branch state.' );
+      } else {
+        fail( 'Branch-aware hash routes', 'Could not confirm branch-aware hash routing.' );
+      }
+
+      if ( !/addEventListener\(\s*'popstate'/.test( scriptSource ) && /addEventListener\(\s*'hashchange'/.test( scriptSource ) ) {
+        pass( 'Single hash router listener', 'Router listens through hashchange without a duplicate popstate listener.' );
+      } else {
+        warn( 'Single hash router listener', 'Router may be wired more than once.' );
+      }
+
+      const inlineHandlers = source.match( /\son[a-z]+\s*=/gi ) || [];
+      if ( inlineHandlers.length === 0 ) {
+        pass( 'No inline event attributes', 'No oninput/onchange/onmouseover/etc attributes found.' );
+      } else {
+        fail( 'No inline event attributes', `Found inline handlers: ${ [ ...new Set( inlineHandlers.map( item => item.trim() ) ) ].join( ', ' ) }` );
+      }
+
+      const codeOnly = stripStringsAndComments( scriptSource );
+      if ( !/\bvar\s+/.test( codeOnly ) ) pass( 'No var declarations', 'No var declarations found in script code.' );
+      else fail( 'No var declarations', 'Found var declarations in script code.' );
+
+      if ( !/\bclass\s+[A-Za-z_$]/.test( codeOnly ) ) pass( 'No class declarations', 'No JavaScript class declarations found.' );
+      else fail( 'No class declarations', 'Found JavaScript class declarations.' );
+
+      if ( !/\bthis\b/.test( codeOnly ) ) pass( 'No this usage in script code', 'No code-level this references found after stripping strings/comments.' );
+      else fail( 'No this usage in script code', 'Found code-level this references.' );
+
+      const requiredPatterns = [
+        [ 'Owner input listener', /ownerInput\.addEventListener\(\s*'input'/.test( scriptSource ) ],
+        [ 'Filter input listener', /filterInput\.addEventListener\(\s*'input'/.test( scriptSource ) ],
+        [ 'Sort select listener', /sortSelect\.addEventListener\(\s*'change'/.test( scriptSource ) ],
+        [ 'Branch select listener', /data-action="select-branch"/.test( source ) && /handleSelectRepo\( el\.dataset\.repo,\s*true,\s*el\.value \)/.test( scriptSource ) ]
+      ];
+
+      requiredPatterns.forEach( ( [ name, ok ] ) => {
+        if ( ok ) pass( name, 'Expected delegated event wiring found.' );
+        else fail( name, 'Expected delegated event wiring was not found.' );
+      } );
+    };
+
+    const runDomChecks = ( win, doc ) => {
+      if ( !doc ) {
+        fail( 'Runtime DOM access', 'Could not access iframe DOM. Browser file security may be blocking inspection.' );
+        return;
+      }
+
+      pass( 'Runtime DOM access', `Loaded document title: ${ doc.title || '(untitled)' }.` );
+
+      const requiredIds = [
+        'ownerInput',
+        'recentUsers',
+        'btnMainAction',
+        'btnGetOrgs',
+        'btnGetGists',
+        'btnStats',
+        'btnDiscover',
+        'btnToggleFolders',
+        'repoList',
+        'navTree',
+        'treeList',
+        'mainContent',
+        'dragMe'
+      ];
+
+      const missingIds = requiredIds.filter( id => !doc.getElementById( id ) );
+      if ( missingIds.length === 0 ) pass( 'Required DOM anchors', 'All expected ids are present.' );
+      else fail( 'Required DOM anchors', `Missing ids: ${ missingIds.join( ', ' ) }.` );
+
+      const duplicateIds = queryAll( doc, '[id]' )
+        .map( node => node.id )
+        .filter( ( id, index, ids ) => ids.indexOf( id ) !== index );
+      if ( duplicateIds.length === 0 ) pass( 'Unique ids', 'No duplicate id attributes found.' );
+      else fail( 'Unique ids', `Duplicate ids: ${ [ ...new Set( duplicateIds ) ].join( ', ' ) }.` );
+
+      const actionNodes = queryAll( doc, '[data-action]' );
+      const actions = actionNodes.map( node => node.dataset.action );
+      const expectedInitialActions = [
+        'reload-app',
+        'open-owner-profile',
+        'fetch-repos',
+        'fetch-orgs',
+        'fetch-gists',
+        'fetch-stats',
+        'discover',
+        'toggle-folders',
+        'prompt-token'
+      ];
+      const missingActions = expectedInitialActions.filter( action => !actions.includes( action ) );
+      if ( missingActions.length === 0 ) {
+        pass( 'Action-driven UI', `Found all ${ expectedInitialActions.length } expected initial actions.` );
+      } else {
+        fail( 'Action-driven UI', `Missing initial actions: ${ missingActions.join( ', ' ) }.` );
+      }
+
+      const runtimeInlineHandlers = queryAll( doc, '*' ).filter( node =>
+        Array.from( node.attributes || [] ).some( attr => /^on/i.test( attr.name ) )
+      );
+      if ( runtimeInlineHandlers.length === 0 ) pass( 'Runtime inline handlers', 'No inline event attributes found in the loaded DOM.' );
+      else fail( 'Runtime inline handlers', `Found ${ runtimeInlineHandlers.length } nodes with inline event attributes.` );
+
+      const libs = [
+        [ 'marked runtime library', Boolean( win.marked ) ],
+        [ 'DOMPurify runtime library', Boolean( win.DOMPurify ) ],
+        [ 'highlight.js runtime library', Boolean( win.hljs ) ]
+      ];
+      libs.forEach( ( [ name, ok ] ) => {
+        if ( ok ) pass( name, 'Library is available in the iframe window.' );
+        else warn( name, 'Library was not available. Network/CDN blocking may be the cause.' );
+      } );
+    };
+
+    const runNetworkChecks = async () => {
+      try {
+        const response = await withTimeout( fetch( 'https://api.github.com/rate_limit' ), 8000, 'GitHub rate-limit probe' );
+        if ( response.ok ) {
+          const data = await response.json();
+          const core = data.resources?.core;
+          pass( 'GitHub API reachable', `Core rate limit remaining: ${ core?.remaining ?? 'unknown' } / ${ core?.limit ?? 'unknown' }.` );
+        } else {
+          warn( 'GitHub API reachable', `GitHub returned HTTP ${ response.status }.` );
+        }
+      } catch ( error ) {
+        warn( 'GitHub API reachable', error.message );
+      }
+    };
+
+    const waitForMainContent = async doc => {
+      const startedAt = performance.now();
+      while ( performance.now() - startedAt < TEST_TIMEOUT_MS ) {
+        const mainContent = doc.getElementById( 'mainContent' );
+        const text = mainContent?.textContent || '';
+        if ( text && !/Loading/i.test( text ) ) return text.trim().slice( 0, 180 );
+        await wait( 300 );
+      }
+      throw new Error( 'mainContent did not settle before timeout' );
+    };
+
+    const runIntegrationRouteCheck = async ( win, doc ) => {
+      if ( !doc ) {
+        warn( 'Automated route check', 'Skipped because iframe DOM is not accessible.' );
+        return;
+      }
+
+      try {
+        win.location.hash = INTEGRATION_HASH;
+        const text = await waitForMainContent( doc );
+        const branchInHash = win.location.hash.includes( '/tree/master/' );
+        if ( branchInHash && /README|Hello-World|repository|octocat/i.test( text ) ) {
+          pass( 'Automated route check', `Loaded ${ INTEGRATION_HASH}; main content settled with: ${ text }` );
+        } else {
+          warn( 'Automated route check', `Route ran, but result was not clearly the expected README. Hash: ${ win.location.hash }; content: ${ text }` );
+        }
+      } catch ( error ) {
+        warn( 'Automated route check', `${ error.message }. This may be a network/rate-limit issue rather than an app bug.` );
+      }
+    };
+
+    const resetReport = () => {
+      report.splice( 0, report.length );
+      resultsBody.textContent = '';
+      rawReport.textContent = '[]';
+      passCount.textContent = '0';
+      warnCount.textContent = '0';
+      failCount.textContent = '0';
+      runTime.textContent = '0s';
+      setStatus( overallStatus, 'pending', 'Running' );
+    };
+
+    const runAll = async () => {
+      resetReport();
+      rerunButton.disabled = true;
+      const startedAt = performance.now();
+
+      try {
+        const win = await loadTargetFrame();
+        const doc = getFrameDocument( win );
+        const source = getSourceFromFrame( doc );
+        const scriptSource = getScriptSource( doc );
+
+        runStaticChecks( source, scriptSource );
+        runDomChecks( win, doc );
+        await runNetworkChecks();
+        await runIntegrationRouteCheck( win, doc );
+      } catch ( error ) {
+        fail( 'Runner failure', error.message );
+      } finally {
+        runTime.textContent = `${ ( ( performance.now() - startedAt ) / 1000 ).toFixed( 1 ) }s`;
+        updateSummary();
+        rerunButton.disabled = false;
+      }
+    };
+
+    rerunButton.addEventListener( 'click', runAll );
+    window.addEventListener( 'DOMContentLoaded', runAll );
+  </script>
+</body>
+
+</html>

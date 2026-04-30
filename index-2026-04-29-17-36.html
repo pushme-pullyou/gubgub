@@ -260,6 +260,107 @@
       font-size: 0.85rem;
     }
 
+    .smart-readme {
+      margin-bottom: 1rem;
+      padding: 1rem;
+      background:
+        linear-gradient(135deg, rgba(9, 105, 218, 0.08), transparent 55%),
+        var(--secondary-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+    }
+
+    .smart-readme-kicker {
+      margin: 0 0 0.35rem 0;
+      color: #57606a;
+      font-size: 0.75rem;
+      font-weight: bold;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .smart-readme-title {
+      margin: 0;
+      font-size: clamp(1.35rem, 3vw, 2.2rem);
+      line-height: 1.1;
+    }
+
+    .smart-readme-summary {
+      max-width: 75ch;
+      color: #57606a;
+      line-height: 1.5;
+      margin: 0.6rem 0 0;
+    }
+
+    .smart-readme-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 0.65rem;
+      margin-top: 1rem;
+    }
+
+    .smart-readme-card {
+      padding: 0.65rem;
+      background: var(--primary-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+    }
+
+    .smart-readme-card strong {
+      display: block;
+      font-size: 1.2rem;
+    }
+
+    .smart-readme-card span {
+      color: #57606a;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .smart-readme-section {
+      margin-top: 1rem;
+    }
+
+    .smart-readme-section h4 {
+      margin: 0 0 0.5rem 0;
+      font-size: 0.85rem;
+      color: #57606a;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .smart-readme-pills,
+    .smart-readme-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .smart-readme-pill {
+      padding: 0.28rem 0.5rem;
+      background: var(--primary-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 999px;
+      color: var(--text-color);
+      font-size: 0.82rem;
+      text-decoration: none;
+    }
+
+    .smart-readme-pill:hover {
+      border-color: var(--highlight-color);
+      color: var(--highlight-color);
+    }
+
+    .smart-readme-code {
+      padding: 0.35rem 0.5rem;
+      background: var(--primary-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      font-family: monospace;
+      overflow-x: auto;
+    }
+
     .markdown-body {
       padding: 1.5rem;
       background: var(--secondary-bg);
@@ -380,7 +481,8 @@
       isGist: false,
       currentFilePath: '',
       repoItems: [],
-      repoRenderer: null
+      repoRenderer: null,
+      repoMeta: null
     };
 
     const ghToken = localStorage.getItem( 'githubToken' ) || '';
@@ -451,17 +553,121 @@
 
     const isReadmePath = path => /^readme(\.(md|markdown|txt))?$/i.test( path.split( '/' ).pop() );
 
-    const getReadmePriority = item => {
-      if ( item.type !== 'blob' || !isReadmePath( item.path ) ) return Infinity;
-      const depth = item.path.split( '/' ).length;
-      const ext = item.path.split( '.' ).pop().toLowerCase();
-      const extRank = ext === 'md' ? 0 : ext === 'markdown' ? 1 : ext === 'txt' ? 2 : 3;
-      return depth * 10 + extRank;
+    const stripMarkdownInline = text => text
+      .replace( /!\[[^\]]*]\([^)]+\)/g, '' )
+      .replace( /\[[^\]]+]\(([^)]+)\)/g, '$1' )
+      .replace( /[`*_~>#-]/g, '' )
+      .replace( /<[^>]+>/g, '' )
+      .trim();
+
+    const extractReadmeTitle = ( text, path ) => {
+      const title = text.match( /^#\s+(.+)$/m );
+      if ( title ) return stripMarkdownInline( title[ 1 ] );
+      return state.repo || path.split( '/' ).pop();
     };
 
-    const findBestReadme = tree => [ ...tree ]
-      .sort( ( a, b ) => getReadmePriority( a ) - getReadmePriority( b ) || a.path.localeCompare( b.path ) )
-      .find( item => getReadmePriority( item ) !== Infinity );
+    const extractReadmeSummary = text => {
+      const withoutCode = text.replace( /```[\s\S]*?```/g, '' );
+      const paragraphs = withoutCode.split( /\n\s*\n/ )
+        .map( stripMarkdownInline )
+        .filter( paragraph => paragraph && paragraph.length > 40 && !/^https?:\/\//i.test( paragraph ) );
+      return paragraphs[ 0 ] || 'No short project summary detected in the README yet.';
+    };
+
+    const extractReadmeLinks = text => {
+      const links = [];
+      const seen = new Set();
+      const linkRegex = /(?<!!)\[([^\]]+)]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+      let match;
+      while ( ( match = linkRegex.exec( text ) ) ) {
+        const label = stripMarkdownInline( match[ 1 ] );
+        const href = match[ 2 ];
+        if ( !label || seen.has( href ) || href.startsWith( '#' ) ) continue;
+        if ( href.startsWith( 'http://' ) || href.startsWith( 'https://' ) ) {
+          seen.add( href );
+          links.push( { label, href } );
+        }
+      }
+      return links.slice( 0, 8 );
+    };
+
+    const getRepoTreeInsight = () => {
+      const blobs = state.tree.filter( item => item.type === 'blob' );
+      const folders = state.tree.filter( item => item.type === 'tree' );
+      const totalSize = blobs.reduce( ( sum, item ) => sum + ( item.size || 0 ), 0 );
+      const names = blobs.map( item => item.path.toLowerCase() );
+      return {
+        files: blobs.length,
+        folders: folders.length,
+        totalSize,
+        hasLicense: names.some( name => /(^|\/)licen[cs]e(\.|$)/.test( name ) ),
+        hasPagesEntry: names.some( name => /(^|\/)(index|404)\.html$/.test( name ) ),
+        hasPackage: names.some( name => /(^|\/)(package\.json|pyproject\.toml|requirements\.txt|cargo\.toml|deno\.json)$/.test( name ) )
+      };
+    };
+
+    const buildSmartReadmePanel = ( text, path, rawUrl ) => {
+      if ( state.isGist || !isReadmePath( path ) ) return '';
+
+      const repoMeta = state.repoMeta || state.repoItems.find( repo => repo.name === state.repo ) || {};
+      const insight = getRepoTreeInsight();
+      const title = extractReadmeTitle( text, path );
+      const summary = extractReadmeSummary( text );
+      const links = extractReadmeLinks( text );
+      const demoUrl = repoMeta.homepage || ( repoMeta.has_pages ? `https://${ state.owner }.github.io/${ state.repo }/` : '' );
+      const cloneUrl = `https://github.com/${ state.owner }/${ state.repo }.git`;
+      const badges = ( text.match( /!\[[^\]]*]\([^)]+\)/g ) || [] ).length;
+      const health = [
+        insight.hasLicense ? 'License found' : 'No license detected',
+        insight.hasPackage ? 'Project manifest found' : 'No manifest detected',
+        insight.hasPagesEntry || repoMeta.has_pages ? 'Pages/site signals found' : 'No Pages entry detected',
+        badges ? `${ badges } badge${ badges === 1 ? '' : 's' }` : 'No badges'
+      ];
+
+      const stats = [
+        [ repoMeta.stargazers_count ?? 0, 'stars' ],
+        [ repoMeta.forks_count ?? 0, 'forks' ],
+        [ formatFileSize( insight.totalSize ) || '0 B', 'known files' ],
+        [ insight.files.toLocaleString(), 'files' ],
+        [ insight.folders.toLocaleString(), 'folders' ]
+      ];
+
+      return `
+        <section class="smart-readme">
+          <p class="smart-readme-kicker">Smart README</p>
+          <h2 class="smart-readme-title">${ escapeHTML( title ) }</h2>
+          <p class="smart-readme-summary">${ escapeHTML( summary ) }</p>
+          <div class="smart-readme-grid">
+            ${ stats.map( ( [ value, label ] ) => `
+              <div class="smart-readme-card">
+                <strong>${ escapeHTML( value ) }</strong>
+                <span>${ escapeHTML( label ) }</span>
+              </div>` ).join( '' ) }
+          </div>
+          <div class="smart-readme-section">
+            <h4>Quick Actions</h4>
+            <div class="smart-readme-actions">
+              <button data-action="open-url" data-url="${ escapeAttribute( rawUrl ) }" class="file-btn">Raw README</button>
+              <button data-action="open-url" data-url="${ escapeAttribute( `https://github.com/${ encodeURIComponent( state.owner ) }/${ encodeURIComponent( state.repo ) }` ) }" class="file-btn">Repo Home</button>
+              ${ demoUrl ? `<button data-action="open-url" data-url="${ escapeAttribute( demoUrl ) }" class="file-btn">Live Site</button>` : '' }
+            </div>
+            <div class="smart-readme-code" style="margin-top: 0.5rem;">git clone ${ escapeHTML( cloneUrl ) }</div>
+          </div>
+          <div class="smart-readme-section">
+            <h4>Signals</h4>
+            <div class="smart-readme-pills">
+              ${ health.map( item => `<span class="smart-readme-pill">${ escapeHTML( item ) }</span>` ).join( '' ) }
+            </div>
+          </div>
+          ${ links.length ? `
+            <div class="smart-readme-section">
+              <h4>README Links</h4>
+              <div class="smart-readme-pills">
+                ${ links.map( link => `<a class="smart-readme-pill" href="${ escapeAttribute( link.href ) }" target="_blank" rel="noopener">${ escapeHTML( link.label ) }</a>` ).join( '' ) }
+              </div>
+            </div>` : '' }
+        </section>`;
+    };
 
     const confirmLargeFileLoad = ( path, size ) => {
       if ( size == null || size < LARGE_FILE_WARNING_BYTES ) return true;
@@ -644,6 +850,7 @@
         onReset: () => {
           state.repo = '';
           state.currentFilePath = '';
+          state.repoMeta = null;
           if ( doUpdateHash ) updateHash();
         },
         itemRenderer: repo => {
@@ -1050,17 +1257,16 @@
       state.repo = repoName;
       state.branch = branch || 'main';
       state.currentFilePath = '';
+      state.repoMeta = null;
       mainContent.innerHTML = `<p>Loading ${ escapeHTML( repoName ) }...</p>`;
 
       try {
         const options = getFetchOptions( true );
-
-        if ( !branch ) {
-          const repoResp = await fetch( `https://api.github.com/repos/${ state.owner }/${ state.repo }`, options );
-          if ( !repoResp.ok ) throw new Error( `Status: ${ repoResp.status } - ${ repoResp.statusText }` );
-          const repoData = await repoResp.json();
-          state.branch = repoData.default_branch;
-        }
+        const repoResp = await fetch( `https://api.github.com/repos/${ state.owner }/${ state.repo }`, options );
+        if ( !repoResp.ok ) throw new Error( `Status: ${ repoResp.status } - ${ repoResp.statusText }` );
+        const repoData = await repoResp.json();
+        state.repoMeta = repoData;
+        if ( !branch ) state.branch = repoData.default_branch;
 
         if ( autoOpenReadme ) updateHash();
 
@@ -1103,7 +1309,9 @@
         renderTree( state.tree );
 
         // Auto-open README — spec: hash is NOT updated for the auto-display
-        const readmeFile = findBestReadme( state.tree );
+        const readmeFile = state.tree.find( item =>
+          item.type === 'blob' && /^readme(\.md|\.txt)?$/i.test( item.path.split( '/' ).pop() )
+        );
 
         if ( autoOpenReadme && readmeFile ) {
           handleSelectFile( readmeFile.path, false );
@@ -1124,6 +1332,7 @@
       state.branch = '';
       state.isGist = true;
       state.currentFilePath = '';
+      state.repoMeta = null;
       if ( autoOpenFile ) updateHash();
       mainContent.innerHTML = '<p>Loading gist...</p>';
 
@@ -1190,7 +1399,7 @@
 
         if ( ext === 'md' ) {
           try {
-            renderedHtml = `<div class="markdown-body">${ DOMPurify.sanitize( marked.parse( text ) ) }</div>`;
+            renderedHtml = `${ buildSmartReadmePanel( text, path, url ) }<div class="markdown-body">${ DOMPurify.sanitize( marked.parse( text ) ) }</div>`;
             showToggles = true;
           } catch ( err ) {
             console.error( 'Markdown render failed:', err );

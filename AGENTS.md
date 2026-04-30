@@ -1,4 +1,4 @@
-# TooToo — AI Agent Instructions
+# GubGub — AI Agent Instructions
 
 ## Hard Constraints
 
@@ -6,29 +6,44 @@
 - **Single-file HTML preferred** — HTML + CSS + JS inline in one `.html` file
 - **Static hosting** — GitHub Pages or `file://` only, no backend
 - **ES2020+** — `const` over `let`, arrow functions, template literals, async/await, no `var`, no classes, no `this`
+- **Local-first** — the app must work by opening `index.html` directly with `file://`
 
 ## What This Repo Is
 
-TooToo is a lightweight single-file GitHub repository browser. A `CONFIG` object at the top of the script sets `owner`, `repo`, and `branch`. The app auto-detects those values from GitHub Pages URLs, `.git/config` files, or localStorage.
+GubGub is a lightweight single-file GitHub repository browser. It lists repositories for a GitHub user or organization, opens a repository tree, and displays files in the browser.
 
-Key file: [`tootoo-2026-lt/index.html`](tootoo-2026-lt/index.html) — the canonical current version.
+The current app formerly called **TooToo** is now **GubGub**. The lighter/current browser formerly called **TooToo LT** is now **TooToo**.
 
-See [`tootoo-2026-lt/README.md`](tootoo-2026-lt/README.md) for features, quick start, and project structure.
+Key file: [`index.html`](index.html) — the canonical current version.
+
+Use [`0-gubgub-agenda.md`](0-gubgub-agenda.md) for priorities and [`0-gubgub-journal.md`](0-gubgub-journal.md) for recent notes.
+
+## UX Philosophy
+
+GubGub should feel like a fast, lightweight file and repo browser.
+
+- On repo load, show the root README by itself when available
+- Keep advanced repo intelligence in the **Stats** button
+- Keep exploration features in **Discover**
+- Avoid adding new panels to the default file view unless explicitly requested
+- Prefer direct, visible, useful behavior over clever feature panels
+- If a feature duplicates an existing button or workflow, pause and ask before implementing
 
 ## Style Conventions
 
-- CSS Custom Properties for all colors/sizes — see `:root` block near top of `<style>`
-- Dark mode via `body.dark-mode` class toggling CSS variables
-- `rem` units for font sizes; `var(--font-size)` on `html` so A−/A+ controls scale everything
-- External CDN dependencies: `marked.min.js`, `highlight.js`, `DOMPurify`, `SheetJS`
+- CSS custom properties for colors/sizes — see `:root` near the top of `<style>`
+- `rem` units for font sizes where practical
+- Template literals are fine for repeated/inline HTML
+- Use `document.createElement` when it makes complex DOM easier to read
+- Use delegated `addEventListener` handlers; do not add inline `on*=` attributes
+- External CDN dependencies are acceptable when the app still has no build step
+- Keep code beginner-readable; if a student cannot follow the logic, simplify it
 
 ## Development Workflow
 
-- Numbered subfolders (`1-layout/`, `2-treeview/`, `3-content/`) contain standalone test files for each module — develop there, then merge into the single `index.html`
-- Archive dated snapshots as `index-YYYY-MM-DD.html` before big rewrites
-- Keep changelogs in `README.md` with dated bullet entries
-- Track priorities in [`0-tootoo-agenda.md`](0-tootoo-agenda.md)
-
-## Multi-Repo Note
-
-Copies of TooToo exist in `theo-armour-sandbox/tootoo/tootoo-2026-lt/` and `theo-armour-pages/tootoo/`. Apply fixes consistently across all copies unless the fix is specific to one repo's `CONFIG`.
+- Edit [`index.html`](index.html) directly; it is the canonical single-file app
+- Make small, reversible changes rather than impressive rewrites
+- Archive dated snapshots as `index-YYYY-MM-DD-HH-MM.html` before larger rewrites
+- Keep changelogs in `README.md` with dated bullet entries when the README is maintained
+- Test by opening [`gubgub-test.html`](gubgub-test.html) and by manually opening `index.html`
+- Do not use `.archive/` files as source references unless explicitly asked
